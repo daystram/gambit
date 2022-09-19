@@ -1,0 +1,24 @@
+# TODO
+
+- [x] Root position system
+- [x] Bitboard representation
+- [-] Move generation
+  - [x] Basic moves
+  - [-] Perft test
+    - [ ] Bug fixes
+  - [x] King check restriction
+  - [x] Castling
+  - [x] En-passant
+  - [ ] 3-repeat draw
+  - [x] Half-move clock
+  - [x] Full-move clock
+- [-] Move application
+  - [x] Copy-Make
+  - [ ] Make-Unmake
+- [ ] Engine
+  - [ ] Scoring heuristics
+    - [ ] Piece value
+  - [ ] Search runner
+- [ ] Interface
+  - [ ] UCI
+  - [x] FEN coder/encoder

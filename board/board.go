@@ -8,7 +8,6 @@ import (
 	"unicode"
 
 	"github.com/daystram/gambit/position"
-	"github.com/fatih/color"
 )
 
 const (
@@ -596,37 +595,33 @@ func (b *Board) Dump() string {
 func (b *Board) Draw() string {
 	builder := strings.Builder{}
 	for y := position.Pos(Height); y > 0; y-- {
-		_, _ = builder.WriteString(fmt.Sprintf(" %d ", y))
+		_, _ = builder.WriteString(fmt.Sprintf("\033[1m %d \033[0m", y))
 		for x := position.Pos(0); x < Width; x++ {
 			s, p := b.getSideAndPiecesByPos(((y-1)*Width + x))
 			sym := p.SymbolUnicode(s, false)
 			if p == PieceUnknown {
 				sym = " "
 			}
-			cell := fmt.Sprintf(" %s ", sym)
-
-			var clr *color.Color
+			var cell string
 			if x%2^y%2 == 0 {
-				clr = color.New(color.BgHiWhite)
+				cell = "\033[38;5;233;48;5;77m" + cell
 			} else {
-				clr = color.New(color.BgHiYellow)
+				cell = "\033[38;5;233;48;5;194m" + cell
 			}
-			switch s {
-			case SideWhite:
-				clr.Add(color.FgWhite)
-			case SideBlack:
-				clr.Add(color.FgBlack)
-			}
-			builder.WriteString(clr.Sprint(cell))
+			cell += fmt.Sprintf(" %s ", sym) + "\033[0m"
+			builder.WriteString(cell)
 		}
 		_, _ = builder.WriteString("\n")
 	}
 	_, _ = builder.WriteString("   ")
 	for x := position.Pos(0); x < Width; x++ {
-		_, _ = builder.WriteString(fmt.Sprintf(" %s ", x.NotationComponentX()))
+		_, _ = builder.WriteString(fmt.Sprintf("\033[1m %s \033[0m", x.NotationComponentX()))
 	}
-	_, _ = builder.WriteString(fmt.Sprintf("\nc: %04b\nh: %d\nf: %d", b.castleRights, b.halfMoveClock, b.fullMoveClock))
 	return builder.String()
+}
+
+func (b *Board) DebugString() string {
+	return fmt.Sprintf("cast: %04b\nhalf: %4d\nfull: %4d\nstat: %s", b.castleRights, b.halfMoveClock, b.fullMoveClock, b.State())
 }
 
 func (b *Board) getSideAndPiecesByPos(i position.Pos) (Side, Piece) {

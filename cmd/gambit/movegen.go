@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/daystram/gambit/board"
 )
@@ -14,6 +15,7 @@ func movegen(fen string) error {
 		return err
 	}
 	fmt.Println("to move:", t)
+	fmt.Println(b.Dump())
 	fmt.Println(b.Draw())
 	fmt.Println(b.State())
 	dumpMoves(b.GenerateMoves(t))
@@ -23,13 +25,14 @@ func movegen(fen string) error {
 		bb.Apply(mv)
 		fmt.Println(mv)
 		fmt.Println(bb.Draw())
+		fmt.Println(bb.FEN())
 	}
 	return nil
 }
 
 func dumpMoves(mvs []*board.Move) {
 	for i, mv := range mvs {
-		fmt.Printf("option %d: [%s] %s %s %s => %s (captures=%v) (checks=%v) (enpassants=%v) (promotes=%s)\n",
-			i, mv, mv.Side, mv.Piece, mv.From, mv.To, mv.IsCapture, mv.IsCheck, mv.IsEnPassant, mv.IsPromote)
+		fmt.Printf("option %*d: [%s] %s %s %s => %s (cap=%v) (enp=%v) (cas=%s) (pro=%s) (chk=%v)\n",
+			len(strconv.Itoa(len(mvs))), i, mv, mv.IsSide, mv.Piece, mv.From, mv.To, mv.IsCapture, mv.IsEnPassant, mv.IsCastle, mv.IsPromote, mv.IsCheck)
 	}
 }

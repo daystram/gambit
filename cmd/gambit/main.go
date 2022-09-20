@@ -27,29 +27,36 @@ func realMain(args []string) error {
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
+	var err error
 	switch args[0] {
 	case "movegen":
 		fen := board.DefaultStartingPositionFEN
 		if len(args) > 1 {
 			fen = strings.Join(args[1:], " ")
 		}
-		err := movegen(fen)
+		err = movegen(fen)
 		if err != nil {
 			return err
 		}
 
 	case "step":
-		err := step()
+		err = step()
 		if err != nil {
 			return err
 		}
 
 	case "perft":
-		depth, err := strconv.Atoi(args[1])
-		if err != nil {
-			return err
+		depth, fen := 5, board.DefaultStartingPositionFEN
+		if len(args) > 1 {
+			depth, err = strconv.Atoi(args[1])
+			if err != nil {
+				return err
+			}
+			if len(args) > 2 {
+				fen = strings.Join(args[2:], " ")
+			}
 		}
-		err = perft(depth)
+		err = perft(depth, fen)
 		if err != nil {
 			return err
 		}

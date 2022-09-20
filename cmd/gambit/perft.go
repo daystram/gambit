@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -13,21 +12,26 @@ import (
 	"github.com/daystram/gambit/board"
 )
 
-func perft(depth int) error {
+func perft(depth int, fen string) error {
 	for _, p := range []struct {
 		name string
 		f    perftFunc
 	}{
-		// {name: "dfs", f: perftDFS},
-		{name: "parallel dfs", f: perftParallelDFS},
+		// {name: "dfs", f: runPerft},
+		{name: "parallel dfs", f: runPerftParallel},
 	} {
 		log.Printf("============ perft(%d): %s\n", depth, p.name)
 
 		var nodes, cap, enp, cas, pro, chk uint64
-		b, _, _ := board.NewBoard(board.WithFEN("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"))
+		b, _, err := board.NewBoard(
+			board.WithFEN(fen),
+		)
+		if err != nil {
+			return err
+		}
 
 		start := time.Now()
-		p.f(b, depth, &nodes, &cap, &enp, &cas, &pro, &chk)
+		p.f(b, depth, true, &nodes, &cap, &enp, &cas, &pro, &chk)
 		end := time.Now()
 
 		log.Println(message.NewPrinter(language.English).
@@ -37,77 +41,97 @@ func perft(depth int) error {
 	return nil
 }
 
-type perftFunc func(b *board.Board, d int, nodes, cap, enp, cas, pro, chk *uint64)
+type perftFunc func(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *uint64) uint64
 
-func perftParallelDFS(b *board.Board, d int, nodes, cap, enp, cas, pro, chk *uint64) {
+func runPerft(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
 	if d == 0 {
-		atomic.AddUint64(nodes, 1)
-		fmt.Println("FEN", b.FEN())
-		return
+		*nodes++
+		return 1
 	}
 
-	mvs := b.GenerateMoves(b.Turn())
+	var sum uint64
+	for _, mv := range b.GenerateMoves(b.Turn()) {
+		var child uint64
+		bb := b.Clone()
+		bb.Apply(mv)
+		if d != 2 {
+			child = runPerft(bb, d-1, false, nodes, cap, enp, cas, pro, chk)
+		} else {
+			leafMoves := bb.GenerateMoves(b.Turn().Opposite())
+			child = uint64(len(leafMoves))
+			*nodes += child
+			for _, leaf := range leafMoves {
+				if leaf.IsCapture {
+					*cap++
+				}
+				if leaf.IsEnPassant {
+					*enp++
+				}
+				if leaf.IsCastle != board.CastleDirectionUnknown {
+					*cas++
+				}
+				if leaf.IsPromote != board.PieceUnknown {
+					*pro++
+				}
+				if leaf.IsCheck {
+					*chk++
+				}
+			}
+		}
+		if root {
+			log.Printf("%s: %d\n", mv.UCI(), child)
+		}
+		sum += child
+	}
+	return sum
+}
 
+func runPerftParallel(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
+	if d == 0 {
+		atomic.AddUint64(nodes, 1)
+		return 1
+	}
+
+	var sum uint64
 	var wg sync.WaitGroup
-	for _, mv := range mvs {
+	for _, mv := range b.GenerateMoves(b.Turn()) {
 		mv := mv
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			var child uint64
 			bb := b.Clone()
 			bb.Apply(mv)
-			perftParallelDFS(bb, d-1, nodes, cap, enp, cas, pro, chk)
-			if mv.IsCapture {
-				atomic.AddUint64(cap, 1)
+			if d != 2 {
+				child = runPerftParallel(bb, d-1, false, nodes, cap, enp, cas, pro, chk)
+			} else {
+				leafMoves := bb.GenerateMoves(b.Turn().Opposite())
+				child = uint64(len(leafMoves))
+				atomic.AddUint64(nodes, child)
+				for _, leaf := range leafMoves {
+					if leaf.IsCapture {
+						atomic.AddUint64(cap, 1)
+					}
+					if leaf.IsEnPassant {
+						atomic.AddUint64(enp, 1)
+					}
+					if leaf.IsCastle != board.CastleDirectionUnknown {
+						atomic.AddUint64(cas, 1)
+					}
+					if leaf.IsPromote != board.PieceUnknown {
+						atomic.AddUint64(pro, 1)
+					}
+					if leaf.IsCheck {
+						atomic.AddUint64(chk, 1)
+					}
+				}
 			}
-			if mv.IsEnPassant {
-				atomic.AddUint64(enp, 1)
+			if root {
+				log.Printf("%s: %d\n", mv.UCI(), child)
 			}
-			if mv.IsCastle != board.CastleDirectionUnknown {
-				atomic.AddUint64(cas, 1)
-			}
-			if mv.IsPromote != board.PieceUnknown {
-				atomic.AddUint64(pro, 1)
-			}
-			if mv.IsCheck {
-				atomic.AddUint64(chk, 1)
-			}
+			atomic.AddUint64(&sum, child)
 		}()
 	}
 	wg.Wait()
-}
-
-func perftDFS(b *board.Board, d int, nodes, cap, enp, cas, pro, chk *uint64) {
-	if d == 0 {
-		atomic.AddUint64(nodes, 1)
-		return
-	}
-
-	s := board.SideWhite
-	if d%2 == 1 {
-		s = board.SideBlack
-	}
-
-	mvs := b.GenerateMoves(s)
-
-	for _, mv := range mvs {
-		bb := b.Clone()
-		bb.Apply(mv)
-		perftDFS(bb, d-1, nodes, cap, enp, cas, pro, chk)
-		if mv.IsCapture {
-			atomic.AddUint64(cap, 1)
-		}
-		if mv.IsEnPassant {
-			atomic.AddUint64(enp, 1)
-		}
-		if mv.IsCastle != board.CastleDirectionUnknown {
-			atomic.AddUint64(cas, 1)
-		}
-		if mv.IsPromote != board.PieceUnknown {
-			atomic.AddUint64(pro, 1)
-		}
-		if mv.IsCheck {
-			atomic.AddUint64(chk, 1)
-		}
-	}
+	return sum
 }

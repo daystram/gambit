@@ -380,7 +380,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 			}
 			for _, mv := range candidateMoves {
 				// flag enpassant
-				mv.IsEnPassant = mv.To == b.enPassantPos
+				mv.IsEnPassant = p == PiecePawn && mv.To == b.enPassantPos
 
 				// flag capture
 				mv.IsCapture = maskCell[mv.To]&toBM&b.occupied != 0 || mv.IsEnPassant
@@ -526,14 +526,13 @@ func (b *Board) Apply(mv *Move) {
 	}
 
 	// update enPassantPos
+	b.enPassantPos = flagNoEnpassant
 	if mv.Piece == PiecePawn {
 		if mv.Side == SideWhite && maskCell[mv.From]&maskRow[1] != 0 && maskCell[mv.To]&maskRow[3] != 0 {
 			b.enPassantPos = mv.To - Width
 		} else if mv.Side == SideBlack && maskCell[mv.From]&maskRow[6] != 0 && maskCell[mv.To]&maskRow[4] != 0 {
 			b.enPassantPos = mv.To + Width
 		}
-	} else {
-		b.enPassantPos = flagNoEnpassant
 	}
 
 	// update castlingRights

@@ -53,14 +53,7 @@ func (p Piece) SymbolAlgebra(s Side) string {
 	if p == PiecePawn {
 		return ""
 	}
-	switch s {
-	case SideWhite:
-		return string(p)
-	case SideBlack:
-		return string(p ^ 0x20) // lowercase is +32 uppercase
-	default:
-		return ""
-	}
+	return p.SymbolFEN(s)
 }
 
 func (p Piece) SymbolUnicode(s Side, invert bool) string {

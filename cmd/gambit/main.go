@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/daystram/gambit/board"
 )
@@ -29,8 +30,8 @@ func realMain(args []string) error {
 	switch args[0] {
 	case "movegen":
 		fen := board.DefaultStartingPositionFEN
-		if len(args) == 2 {
-			fen = args[1]
+		if len(args) > 1 {
+			fen = strings.Join(args[1:], " ")
 		}
 		err := movegen(fen)
 		if err != nil {

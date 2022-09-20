@@ -24,9 +24,9 @@ var (
 
 type Move struct {
 	From, To position.Pos
-	Side     Side
 	Piece    Piece
 
+	IsSide      Side
 	IsCapture   bool
 	IsCheck     bool
 	IsCastle    CastleDirection
@@ -35,10 +35,10 @@ type Move struct {
 }
 
 func (m Move) String() string {
-	switch m.IsCastle {
-	case CastleDirectionKing:
-		return "0-0"
-	case CastleDirectionQueen:
+	if m.IsCastle != CastleDirectionUnknown {
+		if m.IsCastle.IsRight() {
+			return "0-0"
+		}
 		return "0-0-0"
 	}
 	nt := m.Piece.SymbolAlgebra(SideWhite) // SideWhite because it returns capital symbols
@@ -69,53 +69,99 @@ type CastleDirection uint8
 
 const (
 	CastleDirectionUnknown CastleDirection = iota
-	CastleDirectionQueen
-	CastleDirectionKing
+	CastleDirectionWhiteRight
+	CastleDirectionWhiteLeft
+	CastleDirectionBlackRight
+	CastleDirectionBlackLeft
 )
+
+func (d CastleDirection) String() string {
+	switch d {
+	case CastleDirectionWhiteRight:
+		return "White 0-0"
+	case CastleDirectionWhiteLeft:
+		return "White 0-0-0"
+	case CastleDirectionBlackRight:
+		return "Black 0-0"
+	case CastleDirectionBlackLeft:
+		return "Black 0-0-0"
+	default:
+		return ""
+	}
+}
+
+func (d CastleDirection) IsWhite() bool {
+	return d == CastleDirectionWhiteRight || d == CastleDirectionWhiteLeft
+}
+
+func (d CastleDirection) IsRight() bool {
+	return d == CastleDirectionWhiteRight || d == CastleDirectionBlackRight
+}
 
 type CastleRights uint8
 
 var (
-	maskCastleRights = map[Side]map[CastleDirection]CastleRights{
-		SideWhite: {
-			CastleDirectionKing:  0b1000,
-			CastleDirectionQueen: 0b0100,
-		},
-		SideBlack: {
-			CastleDirectionKing:  0b0010,
-			CastleDirectionQueen: 0b0001,
-		},
+	maskCastleRights = [5]CastleRights{
+		0,
+		0b1000, // CastleDirectionWhiteOO
+		0b0100, // CastleDirectionWhiteOOO
+		0b0010, // CastleDirectionBlackOO
+		0b0001, // CastleDirectionBlackOOO
 	}
 )
 
-func (c *CastleRights) Set(s Side, d CastleDirection, allow bool) {
+func (c *CastleRights) Set(d CastleDirection, allow bool) {
 	if allow {
-		*c |= maskCastleRights[s][d]
+		*c |= maskCastleRights[d]
 	} else {
-		*c &^= maskCastleRights[s][d]
+		*c &^= maskCastleRights[d]
 	}
 }
 
-func (c *CastleRights) IsAllowed(s Side, d CastleDirection) bool {
-	return *c&maskCastleRights[s][d] != 0
+func (c *CastleRights) IsAllowed(d CastleDirection) bool {
+	return *c&maskCastleRights[d] != 0
+}
+
+func (c *CastleRights) IsSideAllowed(s Side) bool {
+	if s == SideWhite {
+		return *c&(maskCastleRights[CastleDirectionWhiteLeft]|maskCastleRights[CastleDirectionWhiteRight]) != 0
+	}
+	return *c&(maskCastleRights[CastleDirectionBlackLeft]|maskCastleRights[CastleDirectionBlackRight]) != 0
 }
 
 // Little-endian rank-file (LERF) mapping
 type Board struct {
-	sides        map[Side]bitmap
-	pieces       map[Piece]bitmap
-	occupied     bitmap
-	enPassantPos position.Pos
+	// grid data
+	sides    map[Side]bitmap
+	pieces   map[Piece]bitmap
+	occupied bitmap
 
 	// meta
+	enPassantPos  position.Pos
 	castleRights  CastleRights
 	halfMoveClock uint64
 	fullMoveClock uint64
 	state         State
+	turn          Side
 
 	// cache
 	cacheMoves map[Side]map[Piece][]*Move
 }
+
+// ======================================================= DEBUG
+
+func (b *Board) DumpEnPassant() string {
+	if b.enPassantPos == flagNoEnpassant {
+		return bitmap(0).Dump()
+	}
+	return maskCell[b.enPassantPos].Dump()
+}
+
+func (b *Board) DumpOccupied() string {
+	return b.occupied.Dump()
+}
+
+// ======================================================= DEBUG
 
 func initCacheMoves() map[Side]map[Piece][]*Move {
 	c := make(map[Side]map[Piece][]*Move, 2)
@@ -169,6 +215,7 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 		castleRights:  castleRights,
 		halfMoveClock: halfMoveClock,
 		fullMoveClock: fullMoveClock,
+		turn:          turn,
 		cacheMoves:    initCacheMoves(),
 	}, turn, nil
 }
@@ -254,13 +301,13 @@ crLoop:
 	for i, e := range segments[2] {
 		switch e {
 		case 'K':
-			castleRights.Set(SideWhite, CastleDirectionKing, true)
+			castleRights.Set(CastleDirectionWhiteRight, true)
 		case 'k':
-			castleRights.Set(SideBlack, CastleDirectionKing, true)
+			castleRights.Set(CastleDirectionBlackRight, true)
 		case 'Q':
-			castleRights.Set(SideWhite, CastleDirectionQueen, true)
+			castleRights.Set(CastleDirectionWhiteLeft, true)
 		case 'q':
-			castleRights.Set(SideBlack, CastleDirectionQueen, true)
+			castleRights.Set(CastleDirectionBlackLeft, true)
 		default:
 			if i == 0 && e == '-' {
 				break crLoop
@@ -291,6 +338,70 @@ crLoop:
 	return sides, pieces, castleRights, enPassantPos, halfMoveClock, fullMoveClock, turn, nil
 }
 
+func (b *Board) FEN() string {
+	builder := strings.Builder{}
+	var skip uint8
+	for y := position.Pos(Height) - 1; y >= 0; y-- {
+		for x := position.Pos(0); x < Width; x++ {
+			for skip = 0; x < Width && maskCell[y*Width+x]&b.occupied == 0; x++ {
+				skip++
+			}
+			if skip != 0 {
+				_, _ = builder.WriteRune(rune(skip + '0'))
+			}
+			if x < Width {
+				for p, pBM := range b.pieces {
+					if maskCell[y*Width+x]&pBM != 0 {
+						s := SideWhite
+						if maskCell[y*Width+x]&b.sides[SideBlack] != 0 {
+							s = SideBlack
+						}
+						_, _ = builder.WriteString(p.SymbolFEN(s))
+						break
+					}
+				}
+			}
+		}
+		if y > 0 {
+			_, _ = builder.WriteRune('/')
+		}
+	}
+
+	if b.turn == SideWhite {
+		_, _ = builder.WriteString(" w ")
+	} else {
+		_, _ = builder.WriteString(" b ")
+	}
+
+	if b.castleRights == 0 {
+		_, _ = builder.WriteRune('-')
+	} else {
+		if b.castleRights.IsAllowed(CastleDirectionWhiteRight) {
+			_, _ = builder.WriteRune('K')
+		}
+		if b.castleRights.IsAllowed(CastleDirectionWhiteLeft) {
+			_, _ = builder.WriteRune('Q')
+		}
+		if b.castleRights.IsAllowed(CastleDirectionBlackRight) {
+			_, _ = builder.WriteRune('k')
+		}
+		if b.castleRights.IsAllowed(CastleDirectionBlackLeft) {
+			_, _ = builder.WriteRune('q')
+		}
+	}
+	_, _ = builder.WriteRune(' ')
+
+	if b.enPassantPos == flagNoEnpassant {
+		_, _ = builder.WriteRune('-')
+	} else {
+		_, _ = builder.WriteString(b.enPassantPos.Notation())
+	}
+
+	_, _ = builder.WriteString(fmt.Sprintf(" %d %d", b.halfMoveClock, b.fullMoveClock))
+
+	return builder.String()
+}
+
 func (b *Board) State() State {
 	if b.state != StateUnknown {
 		return b.state
@@ -318,6 +429,10 @@ func (b *Board) State() State {
 		return StateFiftyMoveViolated
 	}
 	return StateRunning
+}
+
+func (b *Board) Turn() Side {
+	return b.turn
 }
 
 func (b *Board) GenerateMoves(s Side) []*Move {
@@ -360,7 +475,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 				for _, prom := range PawnPromoteCandidates {
 					candidateMoves = append(candidateMoves,
 						&Move{
-							Side:      s,
+							IsSide:    s,
 							Piece:     p,
 							From:      fromPos,
 							To:        toPos,
@@ -371,10 +486,10 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 			} else {
 				candidateMoves = append(candidateMoves,
 					&Move{
-						Side:  s,
-						Piece: p,
-						From:  fromPos,
-						To:    toPos,
+						IsSide: s,
+						Piece:  p,
+						From:   fromPos,
+						To:     toPos,
 					},
 				)
 			}
@@ -405,14 +520,25 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 	}
 
 	// generate castling moves
-	if p == PieceKing && (b.castleRights.IsAllowed(s, CastleDirectionKing) || b.castleRights.IsAllowed(s, CastleDirectionQueen)) {
+	if p == PieceKing && b.castleRights.IsSideAllowed(s) {
 		oppositeAttackBM := b.genAttackArea(s.Opposite())
-		for _, d := range []CastleDirection{CastleDirectionKing, CastleDirectionQueen} {
-			if b.castleRights.IsAllowed(s, d) &&
-				maskCastling[s][d]&oppositeAttackBM == 0 &&
-				maskCastling[s][d]&b.occupied == 0 {
+
+		ds := []CastleDirection{
+			CastleDirectionWhiteRight,
+			CastleDirectionWhiteLeft,
+		}
+		if s == SideBlack {
+			ds = []CastleDirection{
+				CastleDirectionBlackRight,
+				CastleDirectionBlackLeft,
+			}
+		}
+		for _, d := range ds {
+			if b.castleRights.IsAllowed(d) &&
+				maskCastling[d]&oppositeAttackBM == 0 &&
+				maskCastling[d]&b.occupied == 0 {
 				mvs = append(mvs, &Move{
-					Side:     s,
+					IsSide:   s,
 					Piece:    p,
 					IsCastle: d,
 				})
@@ -490,62 +616,75 @@ func (b *Board) set(s Side, p Piece, pos position.Pos, value bool) {
 // TODO: return sucess bool
 func (b *Board) Apply(mv *Move) {
 	if mv.IsCastle != CastleDirectionUnknown {
-		hopsKing := posCastling[mv.Side][mv.IsCastle][PieceKing]
-		hopsRook := posCastling[mv.Side][mv.IsCastle][PieceRook]
-		b.set(mv.Side, PieceKing, hopsKing[0], false)
-		b.set(mv.Side, PieceRook, hopsRook[0], false)
-		b.set(mv.Side, PieceKing, hopsKing[1], true)
-		b.set(mv.Side, PieceRook, hopsRook[1], true)
+		hopsKing := posCastling[mv.IsCastle][PieceKing]
+		hopsRook := posCastling[mv.IsCastle][PieceRook]
+		b.set(b.turn, PieceKing, hopsKing[0], false)
+		b.set(b.turn, PieceRook, hopsRook[0], false)
+		b.set(b.turn, PieceKing, hopsKing[1], true)
+		b.set(b.turn, PieceRook, hopsRook[1], true)
 	} else {
 		// remove from
-		b.set(mv.Side, mv.Piece, mv.From, false)
+		b.set(b.turn, mv.Piece, mv.From, false)
 
 		// place to
 		if mv.IsCapture {
 			// remove captured piece
 			if mv.IsEnPassant {
-				var targetPawnPos position.Pos
-				switch mv.Side {
+				var targetPawnPos position.Pos // pos of opponent Pawn to remove by enPassant
+				switch b.turn {
 				case SideWhite:
 					targetPawnPos = mv.To - Width
 				case SideBlack:
 					targetPawnPos = mv.To + Width
 				}
-				b.set(mv.Side.Opposite(), PiecePawn, targetPawnPos, false)
+				b.set(b.turn.Opposite(), PiecePawn, targetPawnPos, false)
 			} else {
 				for p := range b.pieces {
-					b.set(mv.Side.Opposite(), p, mv.To, false)
+					b.set(b.turn.Opposite(), p, mv.To, false)
 				}
 			}
 		}
 		if mv.IsPromote == PieceUnknown {
-			b.set(mv.Side, mv.Piece, mv.To, true)
+			b.set(b.turn, mv.Piece, mv.To, true)
 		} else {
-			b.set(mv.Side, mv.IsPromote, mv.To, true)
+			b.set(b.turn, mv.IsPromote, mv.To, true)
 		}
 	}
 
 	// update enPassantPos
 	b.enPassantPos = flagNoEnpassant
 	if mv.Piece == PiecePawn {
-		if mv.Side == SideWhite && maskCell[mv.From]&maskRow[1] != 0 && maskCell[mv.To]&maskRow[3] != 0 {
+		if b.turn == SideWhite && maskCell[mv.From]&maskRow[1] != 0 && maskCell[mv.To]&maskRow[3] != 0 {
 			b.enPassantPos = mv.To - Width
-		} else if mv.Side == SideBlack && maskCell[mv.From]&maskRow[6] != 0 && maskCell[mv.To]&maskRow[4] != 0 {
+		} else if b.turn == SideBlack && maskCell[mv.From]&maskRow[6] != 0 && maskCell[mv.To]&maskRow[4] != 0 {
 			b.enPassantPos = mv.To + Width
 		}
 	}
 
 	// update castlingRights
 	if mv.Piece == PieceKing {
-		b.castleRights.Set(mv.Side, CastleDirectionKing, false)
-		b.castleRights.Set(mv.Side, CastleDirectionQueen, false)
+		if b.turn == SideWhite {
+			b.castleRights.Set(CastleDirectionWhiteRight, false)
+			b.castleRights.Set(CastleDirectionWhiteLeft, false)
+		} else {
+			b.castleRights.Set(CastleDirectionBlackRight, false)
+			b.castleRights.Set(CastleDirectionBlackLeft, false)
+		}
 	}
 	if mv.Piece == PieceRook {
 		if maskCell[mv.From]&maskCol[7] != 0 {
-			b.castleRights.Set(mv.Side, CastleDirectionKing, false)
+			if b.turn == SideWhite {
+				b.castleRights.Set(CastleDirectionWhiteRight, false)
+			} else {
+				b.castleRights.Set(CastleDirectionBlackRight, false)
+			}
 		}
 		if maskCell[mv.From]&maskCol[0] != 0 {
-			b.castleRights.Set(mv.Side, CastleDirectionQueen, false)
+			if b.turn == SideWhite {
+				b.castleRights.Set(CastleDirectionWhiteLeft, false)
+			} else {
+				b.castleRights.Set(CastleDirectionBlackLeft, false)
+			}
 		}
 
 	}
@@ -558,9 +697,12 @@ func (b *Board) Apply(mv *Move) {
 	}
 
 	// update full move clock
-	if mv.Side == SideBlack {
+	if b.turn == SideBlack {
 		b.fullMoveClock++
 	}
+
+	// set update turn
+	b.turn = b.turn.Opposite()
 
 	// flush cache
 	b.cacheMoves = initCacheMoves()
@@ -572,31 +714,32 @@ func (b *Board) getBitmap(s Side, p Piece) bitmap {
 
 func (b *Board) Dump() string {
 	builder := strings.Builder{}
-	for y := position.Pos(Height); y > 0; y-- {
-		_, _ = builder.WriteString(fmt.Sprintf(" %d |", y))
+	for y := position.Pos(Height) - 1; y >= 0; y-- {
+		_, _ = builder.WriteString("   +---+---+---+---+---+---+---+---+\n")
+		_, _ = builder.WriteString(fmt.Sprintf(" %d |", y+1))
 		for x := position.Pos(0); x < Width; x++ {
-			s, p := b.getSideAndPiecesByPos(((y-1)*Width + x))
+			s, p := b.getSideAndPiecesByPos((y*Width + x))
 			sym := p.SymbolFEN(s)
 			if s == SideUnknown {
-				sym = "."
+				sym = " "
 			}
-			_, _ = builder.WriteString(fmt.Sprintf(" %s ", sym))
+			_, _ = builder.WriteString(fmt.Sprintf(" %s |", sym))
 		}
 		_, _ = builder.WriteString("\n")
 	}
-	_, _ = builder.WriteString("    ------------------------\n    ")
+	_, _ = builder.WriteString("   +---+---+---+---+---+---+---+---+\n   ")
 	for x := position.Pos(0); x < Width; x++ {
-		_, _ = builder.WriteString(fmt.Sprintf(" %s ", x.NotationComponentX()))
+		_, _ = builder.WriteString(fmt.Sprintf("  %s ", x.NotationComponentX()))
 	}
 	return builder.String()
 }
 
 func (b *Board) Draw() string {
 	builder := strings.Builder{}
-	for y := position.Pos(Height); y > 0; y-- {
-		_, _ = builder.WriteString(fmt.Sprintf("\033[1m %d \033[0m", y))
+	for y := position.Pos(Height) - 1; y >= 0; y-- {
+		_, _ = builder.WriteString(fmt.Sprintf("\033[1m %d \033[0m", y+1))
 		for x := position.Pos(0); x < Width; x++ {
-			s, p := b.getSideAndPiecesByPos(((y-1)*Width + x))
+			s, p := b.getSideAndPiecesByPos((y*Width + x))
 			sym := p.SymbolUnicode(s, false)
 			if p == PieceUnknown {
 				sym = " "
@@ -659,6 +802,7 @@ func (b *Board) Clone() *Board {
 		halfMoveClock: b.halfMoveClock,
 		fullMoveClock: b.fullMoveClock,
 		state:         b.state,
+		turn:          b.turn,
 		cacheMoves:    initCacheMoves(),
 	}
 }

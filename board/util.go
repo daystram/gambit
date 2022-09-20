@@ -137,26 +137,22 @@ var (
 	maskKnight = [TotalCells]bitmap{}
 	maskKing   = [TotalCells]bitmap{}
 
-	maskCastling = map[Side]map[CastleDirection]bitmap{}
-	posCastling  = map[Side]map[CastleDirection]map[Piece][]position.Pos{
-		SideWhite: {
-			CastleDirectionKing: {
-				PieceKing: []position.Pos{4, 6},
-				PieceRook: []position.Pos{7, 5},
-			},
-			CastleDirectionQueen: {
-				PieceKing: []position.Pos{4, 2},
-				PieceRook: []position.Pos{0, 3}},
+	maskCastling = [5]bitmap{}
+	posCastling  = [5]map[Piece][2]position.Pos{
+		CastleDirectionWhiteRight: {
+			PieceKing: [2]position.Pos{4, 6},
+			PieceRook: [2]position.Pos{7, 5},
 		},
-		SideBlack: {
-			CastleDirectionKing: {
-				PieceKing: []position.Pos{4 + 7*Width, 6 + 7*Width},
-				PieceRook: []position.Pos{7 + 7*Width, 5 + 7*Width},
-			},
-			CastleDirectionQueen: {
-				PieceKing: []position.Pos{4 + 7*Width, 2 + 7*Width},
-				PieceRook: []position.Pos{0 + 7*Width, 3 + 7*Width}},
+		CastleDirectionWhiteLeft: {
+			PieceKing: [2]position.Pos{4, 2},
+			PieceRook: [2]position.Pos{0, 3}},
+		CastleDirectionBlackRight: {
+			PieceKing: [2]position.Pos{4 + 7*Width, 6 + 7*Width},
+			PieceRook: [2]position.Pos{7 + 7*Width, 5 + 7*Width},
 		},
+		CastleDirectionBlackLeft: {
+			PieceKing: [2]position.Pos{4 + 7*Width, 2 + 7*Width},
+			PieceRook: [2]position.Pos{0 + 7*Width, 3 + 7*Width}},
 	}
 
 	flagNoEnpassant position.Pos = TotalCells + 1
@@ -227,15 +223,11 @@ func init() {
 		maskKing[i] = mask
 	}
 
-	maskCastling = map[Side]map[CastleDirection]bitmap{
-		SideWhite: {
-			CastleDirectionKing:  maskRow[0] & (maskCol[5] | maskCol[6]),
-			CastleDirectionQueen: maskRow[0] & (maskCol[2] | maskCol[3]),
-		},
-		SideBlack: {
-			CastleDirectionKing:  maskRow[7] & (maskCol[5] | maskCol[6]),
-			CastleDirectionQueen: maskRow[7] & (maskCol[2] | maskCol[3]),
-		},
+	maskCastling = [5]bitmap{
+		CastleDirectionWhiteRight: maskRow[0] & (maskCol[5] | maskCol[6]),
+		CastleDirectionWhiteLeft:  maskRow[0] & (maskCol[2] | maskCol[3]),
+		CastleDirectionBlackRight: maskRow[7] & (maskCol[5] | maskCol[6]),
+		CastleDirectionBlackLeft:  maskRow[7] & (maskCol[2] | maskCol[3]),
 	}
 
 	log.Printf("init lookup: %s elapsed\n", time.Since(start))

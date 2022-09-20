@@ -35,6 +35,10 @@ type Move struct {
 }
 
 func (m Move) String() string {
+	return m.Algebra()
+}
+
+func (m Move) Algebra() string {
 	if m.IsCastle != CastleDirectionUnknown {
 		if m.IsCastle.IsRight() {
 			return "0-0"
@@ -61,6 +65,10 @@ func (m Move) String() string {
 		nt += " e.p."
 	}
 	return nt
+}
+
+func (m Move) UCI() string {
+	return m.From.Notation() + m.To.Notation() + m.IsPromote.SymbolAlgebra(SideBlack)
 }
 
 type bitmap uint64

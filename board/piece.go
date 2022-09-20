@@ -38,22 +38,27 @@ func (p Piece) Name() string {
 	}
 }
 
-func (p Piece) SymbolFEN(s Side) string {
-	switch s {
-	case SideWhite:
-		return string(p)
-	case SideBlack:
-		return string(p ^ 0x20) // lowercase is +32 uppercase
-	default:
-		return ""
-	}
-}
-
 func (p Piece) SymbolAlgebra(s Side) string {
 	if p == PiecePawn {
 		return ""
 	}
 	return p.SymbolFEN(s)
+}
+
+func (p Piece) SymbolFEN(s Side) string {
+	switch p {
+	case PiecePawn, PieceBishop, PieceKnight, PieceRook, PieceQueen, PieceKing:
+		switch s {
+		case SideWhite:
+			return string(p)
+		case SideBlack:
+			return string(p | 0x20) // lowercase is +32 uppercase
+		default:
+			return ""
+		}
+	default:
+		return ""
+	}
 }
 
 func (p Piece) SymbolUnicode(s Side, invert bool) string {

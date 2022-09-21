@@ -1,0 +1,45 @@
+name: Build
+
+on: push
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: Ubuntu-20.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+      - name: Setup Go
+        uses: actions/setup-go@v2
+      - name: Lint
+        uses: golangci/golangci-lint-action@v2
+  build:
+    name: Build
+    runs-on: Ubuntu-20.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+      - name: Setup Go
+        uses: actions/setup-go@v2
+      - name: Install Dependencies
+        run: go mod download
+      - name: Build
+        run: make build
+      - name: Archive Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: build
+          path: |
+            ./gambit
+  test:
+    name: Test
+    runs-on: Ubuntu-20.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+      - name: Setup Go
+        uses: actions/setup-go@v2
+      - name: Install Dependencies
+        run: go mod download
+      - name: Test
+        run: make test

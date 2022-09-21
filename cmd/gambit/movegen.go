@@ -33,6 +33,6 @@ func movegen(fen string) error {
 func dumpMoves(mvs []*board.Move) {
 	for i, mv := range mvs {
 		fmt.Printf("option %*d: [%s] %s %s %s => %s (cap=%v) (enp=%v) (cas=%s) (pro=%s) (chk=%v)\n",
-			len(strconv.Itoa(len(mvs))), i, mv, mv.IsSide, mv.Piece, mv.From, mv.To, mv.IsCapture, mv.IsEnPassant, mv.IsCastle, mv.IsPromote, mv.IsCheck)
+			len(strconv.Itoa(len(mvs))), i, mv, mv.IsTurn, mv.Piece, mv.From, mv.To, mv.IsCapture, mv.IsEnPassant, mv.IsCastle, mv.IsPromote, mv.IsCheck)
 	}
 }

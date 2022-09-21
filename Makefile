@@ -7,4 +7,4 @@ build:
 
 .PHONY: test
 test:
-	@${GO} test -v -race -cover ${GO_TARGET}
+	@${GO} test -v -cover ${GO_TARGET}

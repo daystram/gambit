@@ -31,7 +31,7 @@ func perft(depth int, fen string) error {
 		}
 
 		start := time.Now()
-		p.f(b, depth, true, &nodes, &cap, &enp, &cas, &pro, &chk)
+		p.f(b, depth, true, true, &nodes, &cap, &enp, &cas, &pro, &chk)
 		end := time.Now()
 
 		log.Println(message.NewPrinter(language.English).
@@ -41,9 +41,9 @@ func perft(depth int, fen string) error {
 	return nil
 }
 
-type perftFunc func(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *uint64) uint64
+type perftFunc func(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro, chk *uint64) uint64
 
-func runPerft(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
+func runPerft(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
 	if d == 0 {
 		*nodes++
 		return 1
@@ -55,7 +55,7 @@ func runPerft(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *
 		bb := b.Clone()
 		bb.Apply(mv)
 		if d != 2 {
-			child = runPerft(bb, d-1, false, nodes, cap, enp, cas, pro, chk)
+			child = runPerft(bb, d-1, false, debug, nodes, cap, enp, cas, pro, chk)
 		} else {
 			leafMoves := bb.GenerateMoves(b.Turn().Opposite())
 			child = uint64(len(leafMoves))
@@ -78,7 +78,7 @@ func runPerft(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *
 				}
 			}
 		}
-		if root {
+		if debug && root {
 			log.Printf("%s: %d\n", mv.UCI(), child)
 		}
 		sum += child
@@ -86,7 +86,7 @@ func runPerft(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *
 	return sum
 }
 
-func runPerftParallel(b *board.Board, d int, root bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
+func runPerftParallel(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
 	if d == 0 {
 		atomic.AddUint64(nodes, 1)
 		return 1
@@ -103,7 +103,7 @@ func runPerftParallel(b *board.Board, d int, root bool, nodes, cap, enp, cas, pr
 			bb := b.Clone()
 			bb.Apply(mv)
 			if d != 2 {
-				child = runPerftParallel(bb, d-1, false, nodes, cap, enp, cas, pro, chk)
+				child = runPerftParallel(bb, d-1, false, debug, nodes, cap, enp, cas, pro, chk)
 			} else {
 				leafMoves := bb.GenerateMoves(b.Turn().Opposite())
 				child = uint64(len(leafMoves))
@@ -126,7 +126,7 @@ func runPerftParallel(b *board.Board, d int, root bool, nodes, cap, enp, cas, pr
 					}
 				}
 			}
-			if root {
+			if debug && root {
 				log.Printf("%s: %d\n", mv.UCI(), child)
 			}
 			atomic.AddUint64(&sum, child)

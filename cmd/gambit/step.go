@@ -47,7 +47,7 @@ stepLoop:
 		t2 = time.Now()
 		timesState = append(timesState, t2.Sub(t1))
 
-		fmt.Printf("\n===== [#%d] %s: %s\n", step/2+1, mv.IsSide, mv)
+		fmt.Printf("\n===== [#%d] %s: %s\n", step/2+1, mv.IsTurn, mv)
 		fmt.Println(b.Draw())
 		fmt.Println(b.FEN())
 		fmt.Println(b.DebugString())
@@ -80,7 +80,7 @@ stepLoop:
 
 func dumpHistory(mvs []*board.Move) {
 	for i, mv := range mvs {
-		if mv.IsSide == board.SideWhite {
+		if mv.IsTurn == board.SideWhite {
 			fmt.Printf("%d.", i/2+1)
 		}
 		fmt.Printf("%s ", mv)

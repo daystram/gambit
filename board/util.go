@@ -154,8 +154,6 @@ var (
 			PieceKing: [2]position.Pos{4 + 7*Width, 2 + 7*Width},
 			PieceRook: [2]position.Pos{0 + 7*Width, 3 + 7*Width}},
 	}
-
-	flagNoEnpassant position.Pos = TotalCells + 1
 )
 
 func min(a, b position.Pos) position.Pos {

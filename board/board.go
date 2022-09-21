@@ -26,7 +26,7 @@ type Move struct {
 	From, To position.Pos
 	Piece    Piece
 
-	IsSide      Side
+	IsTurn      Side
 	IsCapture   bool
 	IsCheck     bool
 	IsCastle    CastleDirection
@@ -137,32 +137,30 @@ func (c *CastleRights) IsSideAllowed(s Side) bool {
 	return *c&(maskCastleRights[CastleDirectionBlackLeft]|maskCastleRights[CastleDirectionBlackRight]) != 0
 }
 
+type sideBitmaps [3]bitmap
+type pieceBitmaps [7]bitmap
+type moveCache [3][7][]*Move
+
 // Little-endian rank-file (LERF) mapping
 type Board struct {
 	// grid data
-	sides    map[Side]bitmap
-	pieces   map[Piece]bitmap
+	sides    sideBitmaps
+	pieces   pieceBitmaps
 	occupied bitmap
 
 	// meta
-	enPassantPos  position.Pos
+	enPassant     bitmap
 	castleRights  CastleRights
 	halfMoveClock uint64
 	fullMoveClock uint64
 	state         State
 	turn          Side
-
-	// cache
-	cacheMoves map[Side]map[Piece][]*Move
 }
 
 // ======================================================= DEBUG
 
 func (b *Board) DumpEnPassant() string {
-	if b.enPassantPos == flagNoEnpassant {
-		return bitmap(0).Dump()
-	}
-	return maskCell[b.enPassantPos].Dump()
+	return b.enPassant.Dump()
 }
 
 func (b *Board) DumpOccupied() string {
@@ -170,13 +168,6 @@ func (b *Board) DumpOccupied() string {
 }
 
 // ======================================================= DEBUG
-
-func initCacheMoves() map[Side]map[Piece][]*Move {
-	c := make(map[Side]map[Piece][]*Move, 2)
-	c[SideWhite] = make(map[Piece][]*Move, 8)
-	c[SideBlack] = make(map[Piece][]*Move, 8)
-	return c
-}
 
 type boardConfig struct {
 	fen string
@@ -197,7 +188,7 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	for _, f := range opts {
 		f(cfg)
 	}
-	sides, pieces, castleRights, enPassantPos, halfMoveClock, fullMoveClock, turn, err := parseFEN(cfg.fen)
+	sides, pieces, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, err := parseFEN(cfg.fen)
 	if err != nil {
 		return nil, SideUnknown, err
 	}
@@ -219,33 +210,32 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 		sides:         sides,
 		pieces:        pieces,
 		occupied:      Union(sides[SideBlack], sides[SideWhite]),
-		enPassantPos:  enPassantPos,
+		enPassant:     enPassant,
 		castleRights:  castleRights,
 		halfMoveClock: halfMoveClock,
 		fullMoveClock: fullMoveClock,
 		turn:          turn,
-		cacheMoves:    initCacheMoves(),
 	}, turn, nil
 }
 
-func parseFEN(fen string) (map[Side]bitmap, map[Piece]bitmap, CastleRights, position.Pos, uint64, uint64, Side, error) {
+func parseFEN(fen string) (sideBitmaps, pieceBitmaps, CastleRights, bitmap, uint64, uint64, Side, error) {
 	segments := strings.Split(fen, " ")
 	if len(segments) != 6 {
-		return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: incorrect number of segments", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: incorrect number of segments", ErrInvalidFEN)
 	}
 
-	sides := make(map[Side]bitmap, 2)
-	pieces := make(map[Piece]bitmap, 6)
+	var sides sideBitmaps
+	var pieces pieceBitmaps
 	rows := strings.Split(segments[0], "/")
 	if len(rows) != int(Height) {
-		return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid board configuration", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid board configuration", ErrInvalidFEN)
 	}
 	for y := position.Pos(0); y < Height; y++ {
 		ptrX, ptrY := -1, Height-y-1
 		for x := position.Pos(0); x < Width; x++ {
 			ptrX++
 			if ptrX >= len(rows[ptrY]) {
-				return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: missing cells", ErrInvalidFEN)
+				return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: missing cells", ErrInvalidFEN)
 			}
 			var s Side
 			var p Piece
@@ -281,9 +271,9 @@ func parseFEN(fen string) (map[Side]bitmap, map[Piece]bitmap, CastleRights, posi
 						x += skip - 1
 						continue
 					}
-					return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: skip out of bounds", ErrInvalidFEN)
+					return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: skip out of bounds", ErrInvalidFEN)
 				}
-				return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: unknown symbol '%s'", ErrInvalidFEN, string(cell))
+				return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: unknown symbol '%s'", ErrInvalidFEN, string(cell))
 			}
 			pos := y*Width + x
 			sides[s] = Set(sides[s], pos, true)
@@ -298,12 +288,12 @@ func parseFEN(fen string) (map[Side]bitmap, map[Piece]bitmap, CastleRights, posi
 	case "b":
 		turn = SideBlack
 	default:
-		return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid turn", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid turn", ErrInvalidFEN)
 	}
 
 	var castleRights CastleRights
 	if len(segments[2]) > 4 {
-		return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
 	}
 crLoop:
 	for i, e := range segments[2] {
@@ -320,30 +310,33 @@ crLoop:
 			if i == 0 && e == '-' {
 				break crLoop
 			}
-			return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
+			return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
 		}
 	}
 
-	enPassantPos := flagNoEnpassant
+	var enPassant bitmap
 	if segments[3] != "-" {
-		var err error
-		enPassantPos, err = position.NewPosFromNotation(segments[3])
+		pos, err := position.NewPosFromNotation(segments[3])
 		if err != nil {
-			return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
+			return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
+		}
+		enPassant = maskCell[pos]
+		if enPassant&(maskRow[2]|maskRow[5]) == 0 {
+			return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
 		}
 	}
 
 	halfMoveClock, err := strconv.ParseUint(segments[4], 10, 64)
 	if err != nil {
-		return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid half move clock", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid half move clock", ErrInvalidFEN)
 	}
 
 	fullMoveClock, err := strconv.ParseUint(segments[5], 10, 64)
 	if err != nil {
-		return nil, nil, CastleRights(0), position.Pos(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid full move clock", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid full move clock", ErrInvalidFEN)
 	}
 
-	return sides, pieces, castleRights, enPassantPos, halfMoveClock, fullMoveClock, turn, nil
+	return sides, pieces, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, nil
 }
 
 func (b *Board) FEN() string {
@@ -358,13 +351,13 @@ func (b *Board) FEN() string {
 				_, _ = builder.WriteRune(rune(skip + '0'))
 			}
 			if x < Width {
-				for p, pBM := range b.pieces {
+				for p, pBM := range b.pieces[1:] {
 					if maskCell[y*Width+x]&pBM != 0 {
 						s := SideWhite
 						if maskCell[y*Width+x]&b.sides[SideBlack] != 0 {
 							s = SideBlack
 						}
-						_, _ = builder.WriteString(p.SymbolFEN(s))
+						_, _ = builder.WriteString(Piece(p).SymbolFEN(s))
 						break
 					}
 				}
@@ -399,15 +392,27 @@ func (b *Board) FEN() string {
 	}
 	_, _ = builder.WriteRune(' ')
 
-	if b.enPassantPos == flagNoEnpassant {
+	if b.enPassant == 0 {
 		_, _ = builder.WriteRune('-')
 	} else {
-		_, _ = builder.WriteString(b.enPassantPos.Notation())
+		_, _ = builder.WriteString(bitmapToPos(b.enPassant).Notation())
 	}
 
 	_, _ = builder.WriteString(fmt.Sprintf(" %d %d", b.halfMoveClock, b.fullMoveClock))
 
 	return builder.String()
+}
+
+func bitmapToPos(bm bitmap) position.Pos {
+	var p position.Pos
+	for bm != 0 {
+		p++
+		if bm&1 == 1 {
+			return p
+		}
+		bm >>= 1
+	}
+	return p
 }
 
 func (b *Board) State() State {
@@ -446,16 +451,15 @@ func (b *Board) Turn() Side {
 func (b *Board) GenerateMoves(s Side) []*Move {
 	var mvs []*Move
 	for p := range b.pieces {
-		mvs = append(mvs, b.GenerateMovesForPiece(s, p)...)
+		if Piece(p) == PieceUnknown {
+			continue
+		}
+		mvs = append(mvs, b.GenerateMovesForPiece(s, Piece(p))...)
 	}
 	return mvs
 }
 
 func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
-	if mvs, ok := b.cacheMoves[s][p]; ok {
-		return mvs
-	}
-
 	// TRY: if in check, only allow moves to stop it. currently only filter in-post (probably good enough)
 	var mvs []*Move
 	fromBM := b.getBitmap(s, p)
@@ -483,7 +487,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 				for _, prom := range PawnPromoteCandidates {
 					candidateMoves = append(candidateMoves,
 						&Move{
-							IsSide:    s,
+							IsTurn:    s,
 							Piece:     p,
 							From:      fromPos,
 							To:        toPos,
@@ -494,7 +498,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 			} else {
 				candidateMoves = append(candidateMoves,
 					&Move{
-						IsSide: s,
+						IsTurn: s,
 						Piece:  p,
 						From:   fromPos,
 						To:     toPos,
@@ -503,7 +507,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 			}
 			for _, mv := range candidateMoves {
 				// flag enpassant
-				mv.IsEnPassant = p == PiecePawn && mv.To == b.enPassantPos
+				mv.IsEnPassant = p == PiecePawn && maskCell[mv.To] == b.enPassant
 
 				// flag capture
 				mv.IsCapture = maskCell[mv.To]&toBM&b.occupied != 0 || mv.IsEnPassant
@@ -546,15 +550,13 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 				maskCastling[d]&oppositeAttackBM == 0 &&
 				maskCastling[d]&b.occupied == 0 {
 				mvs = append(mvs, &Move{
-					IsSide:   s,
+					IsTurn:   s,
 					Piece:    p,
 					IsCastle: d,
 				})
 			}
 		}
 	}
-
-	b.cacheMoves[s][p] = mvs
 	return mvs
 }
 
@@ -572,7 +574,7 @@ func (b *Board) genAttackArea(s Side) bitmap {
 			if maskCell[pos]&pieceBM&sideBM == 0 {
 				continue
 			}
-			attackBM |= b.genValidDestination(pos, s, p)
+			attackBM |= b.genValidDestination(pos, s, Piece(p))
 		}
 	}
 	return attackBM
@@ -584,21 +586,17 @@ func (b *Board) genValidDestination(from position.Pos, s Side, p Piece) bitmap {
 	switch p {
 	case PiecePawn:
 		cell := maskCell[from] & b.sides[s]
-		var maskEnPassant bitmap
-		if b.enPassantPos != flagNoEnpassant {
-			maskEnPassant = maskCell[b.enPassantPos]
-		}
 		if s == SideWhite {
 			moveN1 := ShiftN(cell&^maskRow[7]) &^ b.occupied
 			moveN2 := ShiftN(moveN1&maskRow[2]) &^ b.occupied
-			captureNW := ShiftNW(cell&^maskRow[7]&^maskCol[0]) & (b.sides[SideBlack] | maskEnPassant)
-			captureNE := ShiftNE(cell&^maskRow[7]&^maskCol[7]) & (b.sides[SideBlack] | maskEnPassant)
+			captureNW := ShiftNW(cell&^maskRow[7]&^maskCol[0]) & (b.sides[SideBlack] | b.enPassant)
+			captureNE := ShiftNE(cell&^maskRow[7]&^maskCol[7]) & (b.sides[SideBlack] | b.enPassant)
 			return moveN1 | moveN2 | captureNW | captureNE
 		}
 		moveS1 := ShiftS(cell) &^ b.occupied
 		moveS2 := ShiftS(moveS1&maskRow[5]) &^ b.occupied
-		captureSW := ShiftSW(cell&^maskRow[0]&^maskCol[0]) & (b.sides[SideWhite] | maskEnPassant)
-		captureSE := ShiftSE(cell&^maskRow[0]&^maskCol[7]) & (b.sides[SideWhite] | maskEnPassant)
+		captureSW := ShiftSW(cell&^maskRow[0]&^maskCol[0]) & (b.sides[SideWhite] | b.enPassant)
+		captureSE := ShiftSE(cell&^maskRow[0]&^maskCol[7]) & (b.sides[SideWhite] | b.enPassant)
 		return moveS1 | moveS2 | captureSW | captureSE
 	case PieceBishop:
 		return HitDiagonals(from, maskCell[from], b.occupied) &^ b.sides[s]
@@ -648,7 +646,10 @@ func (b *Board) Apply(mv *Move) {
 				b.set(b.turn.Opposite(), PiecePawn, targetPawnPos, false)
 			} else {
 				for p := range b.pieces {
-					b.set(b.turn.Opposite(), p, mv.To, false)
+					if Piece(p) == PieceUnknown {
+						continue
+					}
+					b.set(b.turn.Opposite(), Piece(p), mv.To, false)
 				}
 			}
 		}
@@ -660,12 +661,12 @@ func (b *Board) Apply(mv *Move) {
 	}
 
 	// update enPassantPos
-	b.enPassantPos = flagNoEnpassant
+	b.enPassant = bitmap(0)
 	if mv.Piece == PiecePawn {
 		if b.turn == SideWhite && maskCell[mv.From]&maskRow[1] != 0 && maskCell[mv.To]&maskRow[3] != 0 {
-			b.enPassantPos = mv.To - Width
+			b.enPassant = maskCell[mv.To-Width]
 		} else if b.turn == SideBlack && maskCell[mv.From]&maskRow[6] != 0 && maskCell[mv.To]&maskRow[4] != 0 {
-			b.enPassantPos = mv.To + Width
+			b.enPassant = maskCell[mv.To+Width]
 		}
 	}
 
@@ -711,9 +712,6 @@ func (b *Board) Apply(mv *Move) {
 
 	// set update turn
 	b.turn = b.turn.Opposite()
-
-	// flush cache
-	b.cacheMoves = initCacheMoves()
 }
 
 func (b *Board) getBitmap(s Side, p Piece) bitmap {
@@ -775,17 +773,17 @@ func (b *Board) DebugString() string {
 }
 
 func (b *Board) getSideAndPiecesByPos(i position.Pos) (Side, Piece) {
-	s := SideUnknown
+	var s Side
 	for side, sideMap := range b.sides {
 		if sideMap&maskCell[i] != 0 {
-			s = side
+			s = Side(side)
 			break
 		}
 	}
 	p := PieceUnknown
 	for piece, pieceMap := range b.pieces {
 		if pieceMap&maskCell[i] != 0 {
-			p = piece
+			p = Piece(piece)
 			break
 		}
 	}
@@ -793,24 +791,15 @@ func (b *Board) getSideAndPiecesByPos(i position.Pos) (Side, Piece) {
 }
 
 func (b *Board) Clone() *Board {
-	sides := make(map[Side]bitmap, 2)
-	for s, m := range b.sides {
-		sides[s] = m
-	}
-	pieces := make(map[Piece]bitmap, 6)
-	for p, m := range b.pieces {
-		pieces[p] = m
-	}
 	return &Board{
-		sides:         sides,
-		pieces:        pieces,
+		sides:         b.sides,
+		pieces:        b.pieces,
 		occupied:      b.occupied,
-		enPassantPos:  b.enPassantPos,
+		enPassant:     b.enPassant,
 		castleRights:  b.castleRights,
 		halfMoveClock: b.halfMoveClock,
 		fullMoveClock: b.fullMoveClock,
 		state:         b.state,
 		turn:          b.turn,
-		cacheMoves:    initCacheMoves(),
 	}
 }

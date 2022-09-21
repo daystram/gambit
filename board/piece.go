@@ -1,15 +1,15 @@
 package board
 
-type Piece rune
+type Piece uint8
 
 const (
-	PieceUnknown Piece = 0
-	PiecePawn    Piece = 'P'
-	PieceBishop  Piece = 'B'
-	PieceKnight  Piece = 'N'
-	PieceRook    Piece = 'R'
-	PieceQueen   Piece = 'Q'
-	PieceKing    Piece = 'K'
+	PieceUnknown Piece = iota
+	PiecePawn
+	PieceBishop
+	PieceKnight
+	PieceRook
+	PieceQueen
+	PieceKing
 )
 
 // PawnPromoteCandidates represents the candidates for pawn promotion.
@@ -46,19 +46,27 @@ func (p Piece) SymbolAlgebra(s Side) string {
 }
 
 func (p Piece) SymbolFEN(s Side) string {
+	var sym rune
 	switch p {
-	case PiecePawn, PieceBishop, PieceKnight, PieceRook, PieceQueen, PieceKing:
-		switch s {
-		case SideWhite:
-			return string(p)
-		case SideBlack:
-			return string(p | 0x20) // lowercase is +32 uppercase
-		default:
-			return ""
-		}
+	case PiecePawn:
+		sym = 'P'
+	case PieceBishop:
+		sym = 'B'
+	case PieceKnight:
+		sym = 'N'
+	case PieceRook:
+		sym = 'R'
+	case PieceQueen:
+		sym = 'Q'
+	case PieceKing:
+		sym = 'K'
 	default:
 		return ""
 	}
+	if s == SideBlack {
+		sym |= 0x20 // lowercase is +32 uppercase
+	}
+	return string(sym)
 }
 
 func (p Piece) SymbolUnicode(s Side, invert bool) string {

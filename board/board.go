@@ -10,136 +10,13 @@ import (
 	"github.com/daystram/gambit/position"
 )
 
-const (
-	Width      = position.MaxComponentScalar
-	Height     = position.MaxComponentScalar
-	TotalCells = Width * Height
-
-	DefaultStartingPositionFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-)
-
 var (
 	ErrInvalidFEN = errors.New("invalid fen")
 )
 
-type Move struct {
-	From, To position.Pos
-	Piece    Piece
-
-	IsTurn      Side
-	IsCapture   bool
-	IsCheck     bool
-	IsCastle    CastleDirection
-	IsEnPassant bool
-	IsPromote   Piece
-}
-
-func (m Move) String() string {
-	return m.Algebra()
-}
-
-func (m Move) Algebra() string {
-	if m.IsCastle != CastleDirectionUnknown {
-		if m.IsCastle.IsRight() {
-			return "0-0"
-		}
-		return "0-0-0"
-	}
-	nt := m.Piece.SymbolAlgebra(SideWhite) // SideWhite because it returns capital symbols
-	if m.IsCapture {
-		if m.Piece == PiecePawn {
-			nt += m.From.X().NotationComponentX()
-		} else {
-			nt += m.From.Notation()
-		}
-		nt += "x"
-	}
-	nt += m.To.Notation()
-	if m.IsPromote != PieceUnknown {
-		nt += m.IsPromote.SymbolAlgebra(SideWhite)
-	}
-	if m.IsCheck {
-		nt += "+"
-	}
-	if m.IsEnPassant {
-		nt += " e.p."
-	}
-	return nt
-}
-
-func (m Move) UCI() string {
-	return m.From.Notation() + m.To.Notation() + m.IsPromote.SymbolAlgebra(SideBlack)
-}
-
 type bitmap uint64
-
-type CastleDirection uint8
-
-const (
-	CastleDirectionUnknown CastleDirection = iota
-	CastleDirectionWhiteRight
-	CastleDirectionWhiteLeft
-	CastleDirectionBlackRight
-	CastleDirectionBlackLeft
-)
-
-func (d CastleDirection) String() string {
-	switch d {
-	case CastleDirectionWhiteRight:
-		return "White 0-0"
-	case CastleDirectionWhiteLeft:
-		return "White 0-0-0"
-	case CastleDirectionBlackRight:
-		return "Black 0-0"
-	case CastleDirectionBlackLeft:
-		return "Black 0-0-0"
-	default:
-		return ""
-	}
-}
-
-func (d CastleDirection) IsWhite() bool {
-	return d == CastleDirectionWhiteRight || d == CastleDirectionWhiteLeft
-}
-
-func (d CastleDirection) IsRight() bool {
-	return d == CastleDirectionWhiteRight || d == CastleDirectionBlackRight
-}
-
-type CastleRights uint8
-
-var (
-	maskCastleRights = [5]CastleRights{
-		0,
-		0b1000, // CastleDirectionWhiteOO
-		0b0100, // CastleDirectionWhiteOOO
-		0b0010, // CastleDirectionBlackOO
-		0b0001, // CastleDirectionBlackOOO
-	}
-)
-
-func (c *CastleRights) Set(d CastleDirection, allow bool) {
-	if allow {
-		*c |= maskCastleRights[d]
-	} else {
-		*c &^= maskCastleRights[d]
-	}
-}
-
-func (c *CastleRights) IsAllowed(d CastleDirection) bool {
-	return *c&maskCastleRights[d] != 0
-}
-
-func (c *CastleRights) IsSideAllowed(s Side) bool {
-	if s == SideWhite {
-		return *c&(maskCastleRights[CastleDirectionWhiteLeft]|maskCastleRights[CastleDirectionWhiteRight]) != 0
-	}
-	return *c&(maskCastleRights[CastleDirectionBlackLeft]|maskCastleRights[CastleDirectionBlackRight]) != 0
-}
-
 type sideBitmaps [3]bitmap
 type pieceBitmaps [7]bitmap
-type moveCache [3][7][]*Move
 
 // Little-endian rank-file (LERF) mapping
 type Board struct {
@@ -155,19 +32,8 @@ type Board struct {
 	fullMoveClock uint64
 	state         State
 	turn          Side
+	hash          uint64
 }
-
-// ======================================================= DEBUG
-
-func (b *Board) DumpEnPassant() string {
-	return b.enPassant.Dump()
-}
-
-func (b *Board) DumpOccupied() string {
-	return b.occupied.Dump()
-}
-
-// ======================================================= DEBUG
 
 type boardConfig struct {
 	fen string
@@ -192,20 +58,6 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	if err != nil {
 		return nil, SideUnknown, err
 	}
-
-	// sides := map[Side]bitmap{
-	// 	SideBlack: 0x_FF_FF_00_00_00_00_00_00,
-	// 	SideWhite: 0x_00_00_00_00_00_00_FF_FF,
-	// }
-	// pieces := map[Piece]bitmap{
-	// 	PiecePawn:   0x_00_FF_00_00_00_00_FF_00,
-	// 	PieceBishop: 0x_24_00_00_00_00_00_00_24,
-	// 	PieceKnight: 0x_42_00_00_00_00_00_00_42,
-	// 	PieceRook:   0x_81_00_00_00_00_00_00_81,
-	// 	PieceQueen:  0x_08_00_00_00_00_00_00_08,
-	// 	PieceKing:   0x_10_00_00_00_00_00_00_10,
-	// }
-
 	return &Board{
 		sides:         sides,
 		pieces:        pieces,
@@ -357,7 +209,7 @@ func (b *Board) FEN() string {
 						if maskCell[y*Width+x]&b.sides[SideBlack] != 0 {
 							s = SideBlack
 						}
-						_, _ = builder.WriteString(Piece(p).SymbolFEN(s))
+						_, _ = builder.WriteString(Piece(p + 1).SymbolFEN(s))
 						break
 					}
 				}
@@ -395,57 +247,12 @@ func (b *Board) FEN() string {
 	if b.enPassant == 0 {
 		_, _ = builder.WriteRune('-')
 	} else {
-		_, _ = builder.WriteString(bitmapToPos(b.enPassant).Notation())
+		_, _ = builder.WriteString(b.enPassant.LS1B().Notation())
 	}
 
 	_, _ = builder.WriteString(fmt.Sprintf(" %d %d", b.halfMoveClock, b.fullMoveClock))
 
 	return builder.String()
-}
-
-func bitmapToPos(bm bitmap) position.Pos {
-	var p position.Pos
-	for bm != 0 {
-		p++
-		if bm&1 == 1 {
-			return p
-		}
-		bm >>= 1
-	}
-	return p
-}
-
-func (b *Board) State() State {
-	if b.state != StateUnknown {
-		return b.state
-	}
-
-	whiteMoves := b.GenerateMoves(SideWhite)
-	if b.isKingChecked(SideWhite) {
-		if len(whiteMoves) == 0 {
-			return StateCheckmateWhite
-		}
-		return StateCheckWhite
-	}
-	blackMoves := b.GenerateMoves(SideBlack)
-	if b.isKingChecked(SideBlack) {
-		if len(blackMoves) == 0 {
-			return StateCheckmateBlack
-		}
-		return StateCheckBlack
-	}
-	if len(whiteMoves) == 0 || len(blackMoves) == 0 {
-		return StateStalemate
-	}
-	// checkmate takes precedence over the 50 move rule
-	if b.halfMoveClock >= 100 {
-		return StateFiftyMoveViolated
-	}
-	return StateRunning
-}
-
-func (b *Board) Turn() Side {
-	return b.turn
 }
 
 func (b *Board) GenerateMoves(s Side) []*Move {
@@ -462,7 +269,7 @@ func (b *Board) GenerateMoves(s Side) []*Move {
 func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 	// TRY: if in check, only allow moves to stop it. currently only filter in-post (probably good enough)
 	var mvs []*Move
-	fromBM := b.getBitmap(s, p)
+	fromBM := b.GetBitmap(s, p)
 	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
 		// skip if cell is empty
 		if maskCell[fromPos]&fromBM == 0 {
@@ -525,7 +332,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 
 				// flag their King check
 				// TRY: do lazily?
-				mv.IsCheck = bb.isKingChecked(s.Opposite())
+				// mv.IsCheck = bb.isKingChecked(s.Opposite())
 				mvs = append(mvs, mv)
 			}
 		}
@@ -561,7 +368,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 }
 
 func (b *Board) isKingChecked(s Side) bool {
-	return b.getBitmap(s, PieceKing)&b.genAttackArea(s.Opposite()) != 0
+	return b.GetBitmap(s, PieceKing)&b.genAttackArea(s.Opposite()) != 0
 }
 
 // genAttackArea returns the attack area bitmap for the given side.
@@ -619,7 +426,6 @@ func (b *Board) set(s Side, p Piece, pos position.Pos, value bool) {
 	b.occupied = Set(b.occupied, pos, value)
 }
 
-// TODO: return sucess bool
 func (b *Board) Apply(mv *Move) {
 	if mv.IsCastle != CastleDirectionUnknown {
 		hopsKing := posCastling[mv.IsCastle][PieceKing]
@@ -714,7 +520,7 @@ func (b *Board) Apply(mv *Move) {
 	b.turn = b.turn.Opposite()
 }
 
-func (b *Board) getBitmap(s Side, p Piece) bitmap {
+func (b *Board) GetBitmap(s Side, p Piece) bitmap {
 	return b.sides[s] & b.pieces[p]
 }
 
@@ -790,6 +596,39 @@ func (b *Board) getSideAndPiecesByPos(i position.Pos) (Side, Piece) {
 	return s, p
 }
 
+func (b *Board) State() State {
+	if b.state != StateUnknown {
+		return b.state
+	}
+
+	whiteMoves := b.GenerateMoves(SideWhite)
+	if b.isKingChecked(SideWhite) {
+		if len(whiteMoves) == 0 {
+			return StateCheckmateWhite
+		}
+		return StateCheckWhite
+	}
+	blackMoves := b.GenerateMoves(SideBlack)
+	if b.isKingChecked(SideBlack) {
+		if len(blackMoves) == 0 {
+			return StateCheckmateBlack
+		}
+		return StateCheckBlack
+	}
+	if len(whiteMoves) == 0 || len(blackMoves) == 0 {
+		return StateStalemate
+	}
+	// checkmate takes precedence over the 50 move rule
+	if b.halfMoveClock >= 100 {
+		return StateFiftyMoveViolated
+	}
+	return StateRunning
+}
+
+func (b *Board) Turn() Side {
+	return b.turn
+}
+
 func (b *Board) Clone() *Board {
 	return &Board{
 		sides:         b.sides,
@@ -801,5 +640,22 @@ func (b *Board) Clone() *Board {
 		fullMoveClock: b.fullMoveClock,
 		state:         b.state,
 		turn:          b.turn,
+		hash:          b.hash,
 	}
 }
+
+func (b *Board) Hash() uint64 {
+	return b.hash
+}
+
+// ======================================================= DEBUG
+
+func (b *Board) DumpEnPassant() string {
+	return b.enPassant.Dump()
+}
+
+func (b *Board) DumpOccupied() string {
+	return b.occupied.Dump()
+}
+
+// ======================================================= DEBUG

@@ -2,10 +2,8 @@ package board
 
 import (
 	"fmt"
-	"log"
 	"math/bits"
 	"strings"
-	"time"
 
 	"github.com/daystram/gambit/position"
 )
@@ -86,12 +84,35 @@ func Set(b bitmap, pos position.Pos, value bool) bitmap {
 	return b &^ maskCell[pos]
 }
 
-func (b bitmap) Dump(sym ...rune) string {
+func (bm bitmap) BitCount() int {
+	var c int
+	for bm != 0 {
+		if bm&1 == 1 {
+			c++
+		}
+		bm >>= 1
+	}
+	return c
+}
+
+func (bm bitmap) LS1B() position.Pos {
+	var p position.Pos
+	for bm != 0 {
+		if bm&1 == 1 {
+			return p
+		}
+		p++
+		bm >>= 1
+	}
+	return p
+}
+
+func (bm bitmap) Dump(sym ...rune) string {
 	builder := strings.Builder{}
 	for y := position.Pos(Height); y > 0; y-- {
 		_, _ = builder.WriteString(fmt.Sprintf(" %d |", y))
 		for x := position.Pos(0); x < Width; x++ {
-			if b&maskCell[(y-1)*Height+x] != 0 {
+			if bm&maskCell[(y-1)*Height+x] != 0 {
 				s := "#"
 				if len(sym) == 1 {
 					s = string(sym[0])
@@ -110,123 +131,9 @@ func (b bitmap) Dump(sym ...rune) string {
 	return builder.String()
 }
 
-var (
-	maskCell = [TotalCells]bitmap{}
-	maskCol  = [Width]bitmap{
-		0x_01_01_01_01_01_01_01_01,
-		0x_02_02_02_02_02_02_02_02,
-		0x_04_04_04_04_04_04_04_04,
-		0x_08_08_08_08_08_08_08_08,
-		0x_10_10_10_10_10_10_10_10,
-		0x_20_20_20_20_20_20_20_20,
-		0x_40_40_40_40_40_40_40_40,
-		0x_80_80_80_80_80_80_80_80,
-	}
-	maskRow = [Height]bitmap{
-		0x_00_00_00_00_00_00_00_FF,
-		0x_00_00_00_00_00_00_FF_00,
-		0x_00_00_00_00_00_FF_00_00,
-		0x_00_00_00_00_FF_00_00_00,
-		0x_00_00_00_FF_00_00_00_00,
-		0x_00_00_FF_00_00_00_00_00,
-		0x_00_FF_00_00_00_00_00_00,
-		0x_FF_00_00_00_00_00_00_00,
-	}
-	maskDia    = [TotalCells]bitmap{}
-	maskADia   = [TotalCells]bitmap{}
-	maskKnight = [TotalCells]bitmap{}
-	maskKing   = [TotalCells]bitmap{}
-
-	maskCastling = [5]bitmap{}
-	posCastling  = [5]map[Piece][2]position.Pos{
-		CastleDirectionWhiteRight: {
-			PieceKing: [2]position.Pos{4, 6},
-			PieceRook: [2]position.Pos{7, 5},
-		},
-		CastleDirectionWhiteLeft: {
-			PieceKing: [2]position.Pos{4, 2},
-			PieceRook: [2]position.Pos{0, 3}},
-		CastleDirectionBlackRight: {
-			PieceKing: [2]position.Pos{4 + 7*Width, 6 + 7*Width},
-			PieceRook: [2]position.Pos{7 + 7*Width, 5 + 7*Width},
-		},
-		CastleDirectionBlackLeft: {
-			PieceKing: [2]position.Pos{4 + 7*Width, 2 + 7*Width},
-			PieceRook: [2]position.Pos{0 + 7*Width, 3 + 7*Width}},
-	}
-)
-
 func min(a, b position.Pos) position.Pos {
 	if a < b {
 		return a
 	}
 	return b
-}
-
-func init() {
-	start := time.Now()
-	for i := position.Pos(0); i < TotalCells; i++ {
-		maskCell[i] = 1 << i
-	}
-
-	for i := position.Pos(0); i < TotalCells; i++ {
-		mask := bitmap(0)
-		x, y := i%Width, i/Width
-		x, y = x-min(x, y), y-min(x, y)
-		for x < Width && y < Height {
-			mask |= bitmap(1 << (y*Width + x))
-			x++
-			y++
-		}
-		maskDia[i] = mask
-	}
-
-	for i := position.Pos(0); i < TotalCells; i++ {
-		mask := bitmap(0)
-		x, y := i%Width, i/Width
-		x, y = x-min(x, Height-y-1), y+min(x, Height-y-1)
-		for x < Width && y >= 0 {
-			mask |= bitmap(1 << (y*Width + x))
-			x++
-			y--
-		}
-		maskADia[i] = mask
-	}
-
-	for i := position.Pos(0); i < TotalCells; i++ {
-		cell := maskCell[i]
-		mask := bitmap(0)
-		mask |= ShiftN(ShiftN(ShiftE(cell &^ maskRow[7] &^ maskRow[6] &^ maskCol[7])))
-		mask |= ShiftN(ShiftN(ShiftW(cell &^ maskRow[7] &^ maskRow[6] &^ maskCol[0])))
-		mask |= ShiftS(ShiftS(ShiftE(cell &^ maskRow[0] &^ maskRow[1] &^ maskCol[7])))
-		mask |= ShiftS(ShiftS(ShiftW(cell &^ maskRow[0] &^ maskRow[1] &^ maskCol[0])))
-		mask |= ShiftE(ShiftE(ShiftN(cell &^ maskCol[7] &^ maskCol[6] &^ maskRow[7])))
-		mask |= ShiftE(ShiftE(ShiftS(cell &^ maskCol[7] &^ maskCol[6] &^ maskRow[0])))
-		mask |= ShiftW(ShiftW(ShiftN(cell &^ maskCol[0] &^ maskCol[1] &^ maskRow[7])))
-		mask |= ShiftW(ShiftW(ShiftS(cell &^ maskCol[0] &^ maskCol[1] &^ maskRow[0])))
-		maskKnight[i] = mask
-	}
-
-	for i := position.Pos(0); i < TotalCells; i++ {
-		cell := maskCell[i]
-		mask := bitmap(0)
-		mask |= ShiftN(cell &^ maskRow[7])
-		mask |= ShiftNE(cell &^ maskRow[7] &^ maskCol[7])
-		mask |= ShiftE(cell &^ maskCol[7])
-		mask |= ShiftSE(cell &^ maskRow[0] &^ maskCol[7])
-		mask |= ShiftS(cell &^ maskRow[0])
-		mask |= ShiftSW(cell &^ maskRow[0] &^ maskCol[0])
-		mask |= ShiftW(cell &^ maskCol[0])
-		mask |= ShiftNW(cell &^ maskRow[7] &^ maskCol[0])
-		maskKing[i] = mask
-	}
-
-	maskCastling = [5]bitmap{
-		CastleDirectionWhiteRight: maskRow[0] & (maskCol[5] | maskCol[6]),
-		CastleDirectionWhiteLeft:  maskRow[0] & (maskCol[2] | maskCol[3]),
-		CastleDirectionBlackRight: maskRow[7] & (maskCol[5] | maskCol[6]),
-		CastleDirectionBlackLeft:  maskRow[7] & (maskCol[2] | maskCol[3]),
-	}
-
-	log.Printf("init lookup: %s elapsed\n", time.Since(start))
 }

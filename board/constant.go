@@ -128,9 +128,9 @@ func init() {
 
 	maskCastling = [5]bitmap{
 		CastleDirectionWhiteRight: maskRow[0] & (maskCol[5] | maskCol[6]),
-		CastleDirectionWhiteLeft:  maskRow[0] & (maskCol[2] | maskCol[3]),
+		CastleDirectionWhiteLeft:  maskRow[0] & (maskCol[1] | maskCol[2] | maskCol[3]),
 		CastleDirectionBlackRight: maskRow[7] & (maskCol[5] | maskCol[6]),
-		CastleDirectionBlackLeft:  maskRow[7] & (maskCol[2] | maskCol[3]),
+		CastleDirectionBlackLeft:  maskRow[7] & (maskCol[1] | maskCol[2] | maskCol[3]),
 	}
 
 	log.Printf("init board lookup: %s elapsed\n", time.Since(start))

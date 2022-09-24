@@ -43,24 +43,6 @@ func (pvl *PVLine) Len() int {
 
 func (pvl *PVLine) String(b *board.Board) string {
 	return DumpHistory(b, pvl.mvs)
-	// for i, mv := range pvl.mvs {
-	// 	if mv == nil {
-	// 		return s
-	// 	}
-	// 	if b != nil {
-	// 		bb := b.Clone()
-	// 		bb.Apply(mv)
-	// 		mv.IsCheck = bb.State().IsCheck()
-	// 	}
-	// 	s += mv.Algebra()
-	// 	if i != len(pvl.mvs)-1 {
-	// 		if i%2 == 0 {
-	// 			s += " "
-	// 		} else {
-	// 			s += ", "
-	// 		}
-	// 	}
-	// }
 }
 
 func DumpHistory(b *board.Board, mvs []*board.Move) string {
@@ -142,7 +124,6 @@ func (e *Engine) search(ctx context.Context, b *board.Board) (*board.Move, error
 	var bestMove *board.Move
 	var bestScore int32
 
-	// TODO: Killer heuristic
 	// TODO: Null-move heuristic (may not be necessary for now)
 	for d := uint8(1); d < e.maxDepth+1; d++ {
 		e.searchedNodes = 0

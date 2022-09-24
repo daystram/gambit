@@ -84,17 +84,6 @@ func Set(b bitmap, pos position.Pos, value bool) bitmap {
 	return b &^ maskCell[pos]
 }
 
-func (bm bitmap) BitCount() int {
-	var c int
-	for bm != 0 {
-		if bm&1 == 1 {
-			c++
-		}
-		bm >>= 1
-	}
-	return c
-}
-
 func (bm bitmap) LS1B() position.Pos {
 	var p position.Pos
 	for bm != 0 {

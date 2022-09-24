@@ -71,13 +71,20 @@ var (
 	zobristConstantGrid      [2 + 1][6 + 1][64]uint64
 	zobristConstantSideWhite uint64
 
-	magicBishopAttacks [TotalCells][1]bitmap
-	magicBishopMask    [TotalCells]bitmap
-	magicBishopNumber  [TotalCells]bitmap
-	magicRookAttacks   [TotalCells][1]bitmap
-	magicRookMask      [TotalCells]bitmap
-	magicRookNumber    [TotalCells]bitmap
-	magicShifts        uint8 = 5
+	// magicBishopAttacks [TotalCells][1]bitmap
+	magicBishopMask [TotalCells]bitmap
+	// magicBishopNumber  [TotalCells]bitmap
+	// magicRookAttacks   [TotalCells][1]bitmap
+	magicRookMask [TotalCells]bitmap
+	// magicRookNumber    [TotalCells]bitmap
+
+	materialPieceValue = [6 + 1]uint32{
+		PiecePawn:   100,
+		PieceKnight: 300,
+		PieceBishop: 350,
+		PieceRook:   500,
+		PieceQueen:  900,
+	}
 )
 
 func init() {

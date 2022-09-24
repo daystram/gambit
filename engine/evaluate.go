@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	scorePiece = [2 + 2][6 + 1][64]int32{
+	scorePiecePosition = [2 + 2][6 + 1][64]int32{
 		board.SideWhite: {
 			board.PiecePawn: {
 				0, 0, 0, 0, 0, 0, 0, 0,
@@ -36,7 +36,7 @@ var (
 	scoreKiller uint8 = 10
 )
 
-// TODO: Killer heuristic
+// TODO: PST heuristic
 func (e *Engine) scoreMoves(b *board.Board, pv *board.Move, mvs *[]*board.Move) {
 	for i, mv := range *mvs {
 		var score uint8
@@ -74,38 +74,28 @@ func (e *Engine) sortMoves(mvs *[]*board.Move, index int) {
 // +ve for our side, -ve for opponent
 func (e *Engine) evaluate(b *board.Board, mv *board.Move) int32 {
 	ourTurn := b.Turn()
-	oppTurn := ourTurn.Opposite()
-	ourPBM := b.GetBitmap(ourTurn, board.PiecePawn)
-	ourBBM := b.GetBitmap(ourTurn, board.PieceBishop)
-	ourNBM := b.GetBitmap(ourTurn, board.PieceKnight)
-	ourRBM := b.GetBitmap(ourTurn, board.PieceRook)
-	ourQBM := b.GetBitmap(ourTurn, board.PieceQueen)
-	oppPBM := b.GetBitmap(oppTurn, board.PiecePawn)
-	oppBBM := b.GetBitmap(oppTurn, board.PieceBishop)
-	oppNBM := b.GetBitmap(oppTurn, board.PieceKnight)
-	oppRBM := b.GetBitmap(oppTurn, board.PieceRook)
-	oppQBM := b.GetBitmap(oppTurn, board.PieceQueen)
 
-	var scorePieceCount int32
-	scorePieceCount += 100 * int32(ourPBM.BitCount()-oppPBM.BitCount())
-	scorePieceCount += 350 * int32(ourBBM.BitCount()-oppBBM.BitCount())
-	scorePieceCount += 300 * int32(ourNBM.BitCount()-oppNBM.BitCount())
-	scorePieceCount += 500 * int32(ourRBM.BitCount()-oppRBM.BitCount())
-	scorePieceCount += 900 * int32(ourQBM.BitCount()-oppQBM.BitCount())
+	var totalScorePiece int32
+	scorePieceWhite, scorePieceBlack := b.GetMaterialBalance()
+	if ourTurn == board.SideWhite {
+		totalScorePiece = int32(scorePieceWhite) - int32(scorePieceBlack)
+	} else {
+		totalScorePiece = int32(scorePieceBlack) - int32(scorePieceWhite)
+	}
 
 	// TODO: support other pieces
-	var scorePiecePosition int32
+	var totalScorePiecePosition int32
 	for _, p := range []board.Piece{board.PiecePawn} {
 		var pos position.Pos
 		bm := b.GetBitmap(ourTurn, p)
 		for bm != 0 {
 			if bm&1 == 1 {
-				scorePiecePosition += scorePiece[ourTurn][p][pos]
+				totalScorePiecePosition += scorePiecePosition[ourTurn][p][pos]
 			}
 			pos++
 			bm >>= 1
 		}
 	}
 
-	return scorePieceCount + scorePiecePosition
+	return totalScorePiece + totalScorePiecePosition
 }

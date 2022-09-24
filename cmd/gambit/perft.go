@@ -17,8 +17,8 @@ func perft(depth int, fen string) error {
 		name string
 		f    perftFunc
 	}{
-		// {name: "dfs", f: runPerft},
 		{name: "parallel dfs", f: runPerftParallel},
+		{name: "dfs", f: runPerft},
 	} {
 		log.Printf("============ perft(%d): %s\n", depth, p.name)
 

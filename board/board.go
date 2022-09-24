@@ -3,6 +3,7 @@ package board
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 	"strconv"
 	"strings"
 	"unicode"
@@ -18,14 +19,16 @@ type bitmap uint64
 type sideBitmaps [3]bitmap
 type pieceBitmaps [7]bitmap
 type cellList [64]uint8
+type sideMaterials [3]uint32
 
 // Little-endian rank-file (LERF) mapping
 type Board struct {
 	// grid data
-	sides    sideBitmaps
-	pieces   pieceBitmaps
-	occupied bitmap
-	cells    cellList
+	sides     sideBitmaps
+	pieces    pieceBitmaps
+	occupied  bitmap
+	cells     cellList
+	materials sideMaterials
 
 	// meta
 	enPassant     bitmap
@@ -302,12 +305,87 @@ func (b *Board) GenerateMoves() []*Move {
 	return mvs[:i]
 }
 
-func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
-	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
-		fromCell := maskCell[fromPos] & fromMask
-		if fromCell == 0 {
-			continue
+func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, limit int) (int, bitmap) {
+	var count int
+	var attackBM bitmap
+	attackerSideMask := b.sides[attackerSide]
+	posMask := maskCell[pos]
+
+	// find lateral attacker pieces
+	candidateRay := HitLaterals(pos, magicRookMask[pos]&(b.occupied&^maskCell[xrayPos]))
+	attackerLaterals := candidateRay & attackerSideMask & (b.pieces[PieceRook] | b.pieces[PieceQueen])
+	countLateral := bits.OnesCount64(uint64(attackerLaterals))
+	count += countLateral
+	attackBM |= attackerLaterals
+	if count >= limit {
+		return count, attackBM
+	}
+
+	// find diagonal attacker pieces
+	candidateRay = HitDiagonals(pos, magicBishopMask[pos]&(b.occupied&^maskCell[xrayPos]))
+	attackerDiagonals := candidateRay & attackerSideMask & (b.pieces[PieceBishop] | b.pieces[PieceQueen])
+	countDiagonal := bits.OnesCount64(uint64(attackerDiagonals))
+	count += countDiagonal
+	attackBM |= attackerDiagonals
+	if count >= limit {
+		return count, attackBM
+	}
+
+	// fill rays
+	for attackerLaterals != 0 {
+		attackerPos := position.Pos(bits.TrailingZeros64(uint64(attackerLaterals)))
+		attackerLaterals &= attackerLaterals - 1
+
+		attackBM |= HitLaterals(pos, maskCell[attackerPos]) & HitLaterals(attackerPos, posMask)
+	}
+	for attackerDiagonals != 0 {
+		attackerPos := position.Pos(bits.TrailingZeros64(uint64(attackerDiagonals)))
+		attackerDiagonals &= attackerDiagonals - 1
+
+		attackBM |= HitDiagonals(pos, maskCell[attackerPos]) & HitDiagonals(attackerPos, posMask)
+	}
+
+	// find Knight attacks
+	if attackerKnights := maskKnight[pos] & attackerSideMask & b.pieces[PieceKnight]; attackerKnights != 0 {
+		count += bits.OnesCount64(uint64(attackerKnights))
+		attackBM |= attackerKnights
+		if count >= limit {
+			return count, attackBM
 		}
+	}
+
+	// find Pawn attacks
+	if attackerSide == SideWhite {
+		if attackerPawns := (ShiftSW(posMask&^maskRow[0]&^maskCol[0]) | ShiftSE(posMask&^maskRow[0]&^maskCol[7])) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
+			count += bits.OnesCount64(uint64(attackerPawns))
+			attackBM |= attackerPawns
+			if count >= limit {
+				return count, attackBM
+			}
+		}
+	} else {
+		if attackerPawns := (ShiftNW(posMask&^maskRow[7]&^maskCol[0]) | ShiftNE(posMask&^maskRow[7]&^maskCol[7])) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
+			count += bits.OnesCount64(uint64(attackerPawns))
+			attackBM |= attackerPawns
+			if count >= limit {
+				return count, attackBM
+			}
+		}
+	}
+
+	// find King attacks
+	if attackersKing := maskKing[pos] & attackerSideMask & b.pieces[PieceKing]; attackersKing != 0 {
+		attackBM |= attackersKing
+	}
+
+	return count, attackBM
+}
+
+func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+	for fromMask != 0 {
+		fromPos := position.Pos(bits.TrailingZeros64(uint64(fromMask)))
+		fromCell := maskCell[fromPos] & fromMask
+		fromMask &= fromMask - 1
 
 		var candidateToBM bitmap
 		var candidateEnPassantTargetBM bitmap
@@ -333,11 +411,10 @@ func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 			candidateToBM &= allowedToMask
 		}
 
-		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+		for candidateToBM != 0 {
+			toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
 			toCell := maskCell[toPos] & candidateToBM
-			if toCell == 0 {
-				continue
-			}
+			candidateToBM &= candidateToBM - 1
 
 			isEnPassant := toCell == b.enPassant
 			isCapture := toCell&b.occupied != 0 || isEnPassant
@@ -367,21 +444,16 @@ func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 }
 
 func (b *Board) generateMoveKnight(mvs *[]*Move, fromMask, allowedToMask bitmap) {
-	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
-		fromCell := maskCell[fromPos] & fromMask
-		if fromCell == 0 {
-			continue
-		}
+	for fromMask != 0 {
+		fromPos := position.Pos(bits.TrailingZeros64(uint64(fromMask)))
+		fromMask &= fromMask - 1
 
-		var candidateToBM bitmap
-		candidateToBM |= maskKnight[fromPos]
-		candidateToBM &= allowedToMask
+		candidateToBM := maskKnight[fromPos] & allowedToMask
 
-		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+		for candidateToBM != 0 {
+			toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
 			toCell := maskCell[toPos] & candidateToBM
-			if toCell == 0 {
-				continue
-			}
+			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
 			*mvs = append(*mvs, &Move{
@@ -396,21 +468,16 @@ func (b *Board) generateMoveKnight(mvs *[]*Move, fromMask, allowedToMask bitmap)
 }
 
 func (b *Board) generateMoveBishop(mvs *[]*Move, fromMask, allowedToMask bitmap) {
-	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
-		fromCell := maskCell[fromPos] & fromMask
-		if fromCell == 0 {
-			continue
-		}
+	for fromMask != 0 {
+		fromPos := position.Pos(bits.TrailingZeros64(uint64(fromMask)))
+		fromMask &= fromMask - 1
 
-		var candidateToBM bitmap
-		candidateToBM |= HitDiagonals(fromPos, b.occupied)
-		candidateToBM &= allowedToMask
+		candidateToBM := HitDiagonals(fromPos, b.occupied) & allowedToMask
 
-		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+		for candidateToBM != 0 {
+			toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
 			toCell := maskCell[toPos] & candidateToBM
-			if toCell == 0 {
-				continue
-			}
+			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
 			*mvs = append(*mvs, &Move{
@@ -425,21 +492,16 @@ func (b *Board) generateMoveBishop(mvs *[]*Move, fromMask, allowedToMask bitmap)
 }
 
 func (b *Board) generateMoveRook(mvs *[]*Move, fromMask, allowedToMask bitmap) {
-	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
-		fromCell := maskCell[fromPos] & fromMask
-		if fromCell == 0 {
-			continue
-		}
+	for fromMask != 0 {
+		fromPos := position.Pos(bits.TrailingZeros64(uint64(fromMask)))
+		fromMask &= fromMask - 1
 
-		var candidateToBM bitmap
-		candidateToBM |= HitLaterals(fromPos, b.occupied)
-		candidateToBM &= allowedToMask
+		candidateToBM := HitLaterals(fromPos, b.occupied) & allowedToMask
 
-		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+		for candidateToBM != 0 {
+			toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
 			toCell := maskCell[toPos] & candidateToBM
-			if toCell == 0 {
-				continue
-			}
+			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
 			*mvs = append(*mvs, &Move{
@@ -454,21 +516,16 @@ func (b *Board) generateMoveRook(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 }
 
 func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) {
-	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
-		fromCell := maskCell[fromPos] & fromMask
-		if fromCell == 0 {
-			continue
-		}
+	for fromMask != 0 {
+		fromPos := position.Pos(bits.TrailingZeros64(uint64(fromMask)))
+		fromMask &= fromMask - 1
 
-		var candidateToBM bitmap
-		candidateToBM |= (HitDiagonals(fromPos, b.occupied) | HitLaterals(fromPos, b.occupied))
-		candidateToBM &= allowedToMask
+		candidateToBM := (HitDiagonals(fromPos, b.occupied) | HitLaterals(fromPos, b.occupied)) & allowedToMask
 
-		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+		for candidateToBM != 0 {
+			toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
 			toCell := maskCell[toPos] & candidateToBM
-			if toCell == 0 {
-				continue
-			}
+			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
 			*mvs = append(*mvs, &Move{
@@ -479,6 +536,30 @@ func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) 
 				IsCapture: isCapture,
 			})
 		}
+	}
+}
+
+func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMask bitmap) {
+	candidateToBM := maskKing[fromPos] & allowedToMask
+
+	for candidateToBM != 0 {
+		toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
+		toCell := maskCell[toPos] & candidateToBM
+		candidateToBM &= candidateToBM - 1
+
+		attackerCount, _ := b.GetCellAttackers(b.turn.Opposite(), toPos, fromPos, 1)
+		if attackerCount != 0 {
+			continue
+		}
+
+		isCapture := toCell&b.occupied != 0
+		*mvs = append(*mvs, &Move{
+			From:      fromPos,
+			To:        toPos,
+			Piece:     PieceKing,
+			IsTurn:    b.turn,
+			IsCapture: isCapture,
+		})
 	}
 }
 
@@ -553,107 +634,6 @@ func (b *Board) filterInvalidMoves(mvs *[]*Move, kingPos position.Pos) int {
 		}
 	}
 	return i
-}
-
-func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMask bitmap) {
-	var candidateToBM bitmap
-	candidateToBM |= maskKing[fromPos]
-	candidateToBM &= allowedToMask
-
-	for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
-		toCell := maskCell[toPos] & candidateToBM
-		if toCell == 0 {
-			continue
-		}
-
-		attackerCount, _ := b.GetCellAttackers(b.turn.Opposite(), toPos, fromPos, 1)
-		if attackerCount != 0 {
-			continue
-		}
-
-		isCapture := toCell&b.occupied != 0
-		*mvs = append(*mvs, &Move{
-			From:      fromPos,
-			To:        toPos,
-			Piece:     PieceKing,
-			IsTurn:    b.turn,
-			IsCapture: isCapture,
-		})
-	}
-}
-
-func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, limit int) (int, bitmap) {
-	var count int
-	var attackBM bitmap
-	attackerSideMask := b.sides[attackerSide]
-	posMask := maskCell[pos]
-
-	// find lateral attacker pieces
-	candidateRay := HitLaterals(pos, magicRookMask[pos]&(b.occupied&^maskCell[xrayPos]))
-	attackerLaterals := candidateRay & attackerSideMask & (b.pieces[PieceRook] | b.pieces[PieceQueen])
-	countLateral := attackerLaterals.BitCount()
-	count += countLateral
-	attackBM |= attackerLaterals
-	if count >= limit {
-		return count, attackBM
-	}
-
-	// find diagonal attacker pieces
-	candidateRay = HitDiagonals(pos, magicBishopMask[pos]&(b.occupied&^maskCell[xrayPos]))
-	attackerDiagonals := candidateRay & attackerSideMask & (b.pieces[PieceBishop] | b.pieces[PieceQueen])
-	countDiagonal := attackerDiagonals.BitCount()
-	count += countDiagonal
-	attackBM |= attackerDiagonals
-	if count >= limit {
-		return count, attackBM
-	}
-
-	// fill rays
-	for attackerPos := position.Pos(0); countLateral != 0 && attackerPos < TotalCells; attackerPos++ {
-		if attackerLaterals&maskCell[attackerPos] != 0 {
-			attackBM |= HitLaterals(pos, maskCell[attackerPos]) & HitLaterals(attackerPos, posMask)
-		}
-	}
-	for attackerPos := position.Pos(0); countDiagonal != 0 && attackerPos < TotalCells; attackerPos++ {
-		if attackerDiagonals&maskCell[attackerPos] != 0 {
-			attackBM |= HitDiagonals(pos, maskCell[attackerPos]) & HitDiagonals(attackerPos, posMask)
-		}
-	}
-
-	// find Knight attacks
-	if attackerKnights := maskKnight[pos] & attackerSideMask & b.pieces[PieceKnight]; attackerKnights != 0 {
-		count += attackerKnights.BitCount()
-		attackBM |= attackerKnights
-		if count >= limit {
-			return count, attackBM
-		}
-	}
-
-	// find Pawn attacks
-	if attackerSide == SideWhite {
-		if attackerPawns := (ShiftSW(posMask&^maskRow[0]&^maskCol[0]) | ShiftSE(posMask&^maskRow[0]&^maskCol[7])) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
-			count += attackerPawns.BitCount()
-			attackBM |= attackerPawns
-			if count >= limit {
-				return count, attackBM
-			}
-		}
-	} else {
-		if attackerPawns := (ShiftNW(posMask&^maskRow[7]&^maskCol[0]) | ShiftNE(posMask&^maskRow[7]&^maskCol[7])) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
-			count += attackerPawns.BitCount()
-			attackBM |= attackerPawns
-			if count >= limit {
-				return count, attackBM
-			}
-		}
-	}
-
-	// find King attacks
-	if attackersKing := maskKing[pos] & attackerSideMask & b.pieces[PieceKing]; attackersKing != 0 {
-		attackBM |= attackersKing
-	}
-
-	return count, attackBM
 }
 
 func (b *Board) flip(s Side, p Piece, pos position.Pos) {

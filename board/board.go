@@ -261,169 +261,394 @@ func (b *Board) FEN() string {
 	return builder.String()
 }
 
-func (b *Board) GenerateMoves(s Side) []*Move {
-	var mvs []*Move
-	for p := range b.pieces {
-		if Piece(p) == PieceUnknown {
-			continue
-		}
-		// TODO: tailor move generation based on king check/pinning state
-		b.GenerateMovesForPiece(&mvs, s, Piece(p))
+func (b *Board) GenerateMoves() []*Move {
+	mvs := make([]*Move, 0, 64)
+	sideMask := b.sides[b.turn]
+
+	kingPos := b.GetBitmap(b.turn, PieceKing).LS1B()
+	checkerCount, attackedMask := b.GetCellAttackers(b.turn.Opposite(), kingPos, 0, 2)
+
+	if checkerCount == 2 {
+		b.generateMoveKing(&mvs, kingPos, ^attackedMask&^sideMask)
+		return mvs
 	}
-	return mvs
+
+	if checkerCount == 1 {
+		b.generateMovePawn(&mvs, sideMask&b.pieces[PiecePawn], attackedMask)
+		b.generateMoveKnight(&mvs, sideMask&b.pieces[PieceKnight], attackedMask)
+		b.generateMoveBishop(&mvs, sideMask&b.pieces[PieceBishop], attackedMask)
+		b.generateMoveRook(&mvs, sideMask&b.pieces[PieceRook], attackedMask)
+		b.generateMoveQueen(&mvs, sideMask&b.pieces[PieceQueen], attackedMask)
+		b.generateMoveKing(&mvs, kingPos, ^attackedMask&^sideMask)
+		return mvs
+	}
+
+	nonSelfMask := ^sideMask
+	b.generateMovePawn(&mvs, sideMask&b.pieces[PiecePawn], nonSelfMask)
+	b.generateMoveKnight(&mvs, sideMask&b.pieces[PieceKnight], nonSelfMask)
+	b.generateMoveBishop(&mvs, sideMask&b.pieces[PieceBishop], nonSelfMask)
+	b.generateMoveRook(&mvs, sideMask&b.pieces[PieceRook], nonSelfMask)
+	b.generateMoveQueen(&mvs, sideMask&b.pieces[PieceQueen], nonSelfMask)
+	b.generateMoveKing(&mvs, kingPos, nonSelfMask)
+	b.generateCastling(&mvs)
+
+	// TODO: try strictly legal generator and remove this
+	i := b.filterInvalidMoves(&mvs, kingPos)
+	return mvs[:i]
 }
 
-func (b *Board) GenerateMovesForPiece(mvs *[]*Move, s Side, p Piece) {
-	// TRY: if in check, only allow moves to stop it. currently only filter in-post (probably good enough)
-	fromBM := b.GetBitmap(s, p)
+func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
-		// skip if cell is empty
-		if maskCell[fromPos]&fromBM == 0 {
+		fromCell := maskCell[fromPos] & fromMask
+		if fromCell == 0 {
 			continue
 		}
 
-		// get destination bitmap
-		toBM := b.genValidDestination(fromPos, s, p) &^ fromBM // exclude self piece
-		if toBM == 0 {
-			continue
+		var candidateToBM bitmap
+		var candidateEnPassantTargetBM bitmap
+		if b.turn == SideWhite {
+			moveN1 := ShiftN(fromCell&^maskRow[7]) &^ b.occupied
+			moveN2 := ShiftN(moveN1&maskRow[2]) &^ b.occupied
+			captureNW := ShiftNW(fromCell&^maskRow[7]&^maskCol[0]) & (b.sides[SideBlack] | b.enPassant)
+			captureNE := ShiftNE(fromCell&^maskRow[7]&^maskCol[7]) & (b.sides[SideBlack] | b.enPassant)
+			candidateToBM = moveN1 | moveN2 | captureNW | captureNE
+			candidateEnPassantTargetBM = ShiftS(b.enPassant)
+		} else {
+			moveS1 := ShiftS(fromCell) &^ b.occupied
+			moveS2 := ShiftS(moveS1&maskRow[5]) &^ b.occupied
+			captureSW := ShiftSW(fromCell&^maskRow[0]&^maskCol[0]) & (b.sides[SideWhite] | b.enPassant)
+			captureSE := ShiftSE(fromCell&^maskRow[0]&^maskCol[7]) & (b.sides[SideWhite] | b.enPassant)
+			candidateToBM = moveS1 | moveS2 | captureSW | captureSE
+			candidateEnPassantTargetBM = ShiftN(b.enPassant)
+		}
+		if allowedToMask&candidateEnPassantTargetBM != 0 {
+			// enPasssant may be stopping a King check
+			candidateToBM &= allowedToMask | b.enPassant
+		} else {
+			candidateToBM &= allowedToMask
 		}
 
 		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
-			// skip if cell is empty
-			if maskCell[toPos]&toBM == 0 {
+			toCell := maskCell[toPos] & candidateToBM
+			if toCell == 0 {
 				continue
 			}
 
-			var candidateMoves []*Move
-			// see if promotion is expected
-			if p == PiecePawn && (maskRow[0]|maskRow[7])&maskCell[toPos] != 0 {
-				for _, prom := range PawnPromoteCandidates {
-					candidateMoves = append(candidateMoves,
-						&Move{
-							IsTurn:    s,
-							Piece:     p,
-							From:      fromPos,
-							To:        toPos,
-							IsPromote: prom,
-						},
-					)
-				}
-			} else {
-				candidateMoves = append(candidateMoves,
-					&Move{
-						IsTurn: s,
-						Piece:  p,
-						From:   fromPos,
-						To:     toPos,
-					},
-				)
-			}
-			for _, mv := range candidateMoves {
-				// flag enpassant
-				mv.IsEnPassant = p == PiecePawn && maskCell[mv.To] == b.enPassant
-
-				// flag capture
-				mv.IsCapture = maskCell[mv.To]&toBM&b.occupied != 0 || mv.IsEnPassant
-
-				// get representation of next board if move was to be applied
-				// this has to be done after the essential (IsCheck is not essential) flags are set
-				// because board.Apply() needs them for correct incremental update
-				bb := b.Clone()
-				bb.Apply(mv)
-
-				// filter moves that leaves our King in check
-				if bb.isKingChecked(s) {
-					continue
-				}
-
-				// flag their King check
-				// TRY: do lazily?
-				mv.IsCheck = bb.isKingChecked(s.Opposite())
-
-				*mvs = append(*mvs, mv)
-			}
-		}
-	}
-
-	// generate castling moves
-	if p == PieceKing && b.castleRights.IsSideAllowed(s) {
-		oppositeAttackBM := b.genAttackArea(s.Opposite())
-
-		ds := []CastleDirection{
-			CastleDirectionWhiteRight,
-			CastleDirectionWhiteLeft,
-		}
-		if s == SideBlack {
-			ds = []CastleDirection{
-				CastleDirectionBlackRight,
-				CastleDirectionBlackLeft,
-			}
-		}
-		for _, d := range ds {
-			if b.castleRights.IsAllowed(d) &&
-				maskCastling[d]&oppositeAttackBM == 0 &&
-				maskCastling[d]&b.occupied == 0 {
+			isEnPassant := toCell == b.enPassant
+			isCapture := toCell&b.occupied != 0 || isEnPassant
+			if toCell&(maskRow[0]|maskRow[7]) == 0 {
 				*mvs = append(*mvs, &Move{
-					IsTurn:   s,
-					Piece:    p,
-					IsCastle: d,
+					From:        fromPos,
+					To:          toPos,
+					Piece:       PiecePawn,
+					IsTurn:      b.turn,
+					IsCapture:   isCapture,
+					IsEnPassant: isEnPassant,
 				})
+			} else {
+				for _, prom := range PawnPromoteCandidates {
+					*mvs = append(*mvs, &Move{
+						From:      fromPos,
+						To:        toPos,
+						Piece:     PiecePawn,
+						IsTurn:    b.turn,
+						IsCapture: isCapture,
+						IsPromote: prom,
+					})
+				}
 			}
 		}
 	}
 }
 
-func (b *Board) isKingChecked(s Side) bool {
-	return b.GetBitmap(s, PieceKing)&b.genAttackArea(s.Opposite()) != 0
-}
+func (b *Board) generateMoveKnight(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
+		fromCell := maskCell[fromPos] & fromMask
+		if fromCell == 0 {
+			continue
+		}
 
-// genAttackArea returns the attack area bitmap for the given side.
-func (b *Board) genAttackArea(s Side) bitmap {
-	// TODO: cache?
-	attackBM := bitmap(0)
-	sideBM := b.sides[s]
-	for p, pieceBM := range b.pieces {
-		for pos := position.Pos(0); pos < TotalCells; pos++ {
-			if maskCell[pos]&pieceBM&sideBM == 0 {
+		var candidateToBM bitmap
+		candidateToBM |= maskKnight[fromPos]
+		candidateToBM &= allowedToMask
+
+		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+			toCell := maskCell[toPos] & candidateToBM
+			if toCell == 0 {
 				continue
 			}
-			attackBM |= b.genValidDestination(pos, s, Piece(p))
+
+			isCapture := toCell&b.occupied != 0
+			*mvs = append(*mvs, &Move{
+				From:      fromPos,
+				To:        toPos,
+				Piece:     PieceKnight,
+				IsTurn:    b.turn,
+				IsCapture: isCapture,
+			})
 		}
 	}
-	return attackBM
 }
 
-// genValidDestination generates the bitmap for the next valid positions.
-// This generate function is not strictly legal (e.g., king may be left in check).
-func (b *Board) genValidDestination(from position.Pos, s Side, p Piece) bitmap {
-	switch p {
-	case PiecePawn:
-		cell := maskCell[from] & b.sides[s]
-		if s == SideWhite {
-			moveN1 := ShiftN(cell&^maskRow[7]) &^ b.occupied
-			moveN2 := ShiftN(moveN1&maskRow[2]) &^ b.occupied
-			captureNW := ShiftNW(cell&^maskRow[7]&^maskCol[0]) & (b.sides[SideBlack] | b.enPassant)
-			captureNE := ShiftNE(cell&^maskRow[7]&^maskCol[7]) & (b.sides[SideBlack] | b.enPassant)
-			return moveN1 | moveN2 | captureNW | captureNE
+func (b *Board) generateMoveBishop(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
+		fromCell := maskCell[fromPos] & fromMask
+		if fromCell == 0 {
+			continue
 		}
-		moveS1 := ShiftS(cell) &^ b.occupied
-		moveS2 := ShiftS(moveS1&maskRow[5]) &^ b.occupied
-		captureSW := ShiftSW(cell&^maskRow[0]&^maskCol[0]) & (b.sides[SideWhite] | b.enPassant)
-		captureSE := ShiftSE(cell&^maskRow[0]&^maskCol[7]) & (b.sides[SideWhite] | b.enPassant)
-		return moveS1 | moveS2 | captureSW | captureSE
-	case PieceBishop:
-		return HitDiagonals(from, maskCell[from], b.occupied) &^ b.sides[s]
-	case PieceKnight:
-		return maskKnight[from] &^ b.sides[s]
-	case PieceRook:
-		return HitLaterals(from, maskCell[from], b.occupied) &^ b.sides[s]
-	case PieceQueen:
-		return (HitDiagonals(from, maskCell[from], b.occupied) | HitLaterals(from, maskCell[from], b.occupied)) &^ b.sides[s]
-	case PieceKing:
-		return maskKing[from] &^ b.sides[s]
-	default:
-		return 0
+
+		var candidateToBM bitmap
+		candidateToBM |= HitDiagonals(fromPos, b.occupied)
+		candidateToBM &= allowedToMask
+
+		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+			toCell := maskCell[toPos] & candidateToBM
+			if toCell == 0 {
+				continue
+			}
+
+			isCapture := toCell&b.occupied != 0
+			*mvs = append(*mvs, &Move{
+				From:      fromPos,
+				To:        toPos,
+				Piece:     PieceBishop,
+				IsTurn:    b.turn,
+				IsCapture: isCapture,
+			})
+		}
 	}
+}
+
+func (b *Board) generateMoveRook(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
+		fromCell := maskCell[fromPos] & fromMask
+		if fromCell == 0 {
+			continue
+		}
+
+		var candidateToBM bitmap
+		candidateToBM |= HitLaterals(fromPos, b.occupied)
+		candidateToBM &= allowedToMask
+
+		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+			toCell := maskCell[toPos] & candidateToBM
+			if toCell == 0 {
+				continue
+			}
+
+			isCapture := toCell&b.occupied != 0
+			*mvs = append(*mvs, &Move{
+				From:      fromPos,
+				To:        toPos,
+				Piece:     PieceRook,
+				IsTurn:    b.turn,
+				IsCapture: isCapture,
+			})
+		}
+	}
+}
+
+func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
+		fromCell := maskCell[fromPos] & fromMask
+		if fromCell == 0 {
+			continue
+		}
+
+		var candidateToBM bitmap
+		candidateToBM |= (HitDiagonals(fromPos, b.occupied) | HitLaterals(fromPos, b.occupied))
+		candidateToBM &= allowedToMask
+
+		for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+			toCell := maskCell[toPos] & candidateToBM
+			if toCell == 0 {
+				continue
+			}
+
+			isCapture := toCell&b.occupied != 0
+			*mvs = append(*mvs, &Move{
+				From:      fromPos,
+				To:        toPos,
+				Piece:     PieceQueen,
+				IsTurn:    b.turn,
+				IsCapture: isCapture,
+			})
+		}
+	}
+}
+
+func (b *Board) generateCastling(mvs *[]*Move) {
+	opponentSide := b.turn.Opposite()
+	if b.castleRights.IsSideAllowed(b.turn) {
+		if b.turn == SideWhite {
+			if b.castleRights.IsAllowed(CastleDirectionWhiteLeft) &&
+				b.occupied&maskCastling[CastleDirectionWhiteLeft] == 0 {
+				attackerB1, _ := b.GetCellAttackers(opponentSide, 1, 0, 1)
+				attackerC1, _ := b.GetCellAttackers(opponentSide, 2, 0, 1)
+				attackerD1, _ := b.GetCellAttackers(opponentSide, 3, 0, 1)
+				if attackerB1+attackerC1+attackerD1 == 0 {
+					*mvs = append(*mvs, &Move{
+						IsTurn:   b.turn,
+						Piece:    PieceKing,
+						IsCastle: CastleDirectionWhiteLeft,
+					})
+				}
+			}
+			if b.castleRights.IsAllowed(CastleDirectionWhiteRight) &&
+				b.occupied&maskCastling[CastleDirectionWhiteRight] == 0 {
+				attackerF1, _ := b.GetCellAttackers(opponentSide, 5, 0, 1)
+				attackerG1, _ := b.GetCellAttackers(opponentSide, 6, 0, 1)
+				if attackerF1+attackerG1 == 0 {
+					*mvs = append(*mvs, &Move{
+						IsTurn:   b.turn,
+						Piece:    PieceKing,
+						IsCastle: CastleDirectionWhiteRight,
+					})
+				}
+			}
+		} else {
+			if b.castleRights.IsAllowed(CastleDirectionBlackLeft) &&
+				b.occupied&maskCastling[CastleDirectionBlackLeft] == 0 {
+				attackerB1, _ := b.GetCellAttackers(opponentSide, 57, 0, 1)
+				attackerC1, _ := b.GetCellAttackers(opponentSide, 58, 0, 1)
+				attackerD1, _ := b.GetCellAttackers(opponentSide, 59, 0, 1)
+				if attackerB1+attackerC1+attackerD1 == 0 {
+					*mvs = append(*mvs, &Move{
+						IsTurn:   b.turn,
+						Piece:    PieceKing,
+						IsCastle: CastleDirectionBlackLeft,
+					})
+				}
+			}
+			if b.castleRights.IsAllowed(CastleDirectionBlackRight) &&
+				b.occupied&maskCastling[CastleDirectionBlackRight] == 0 {
+				attackerF8, _ := b.GetCellAttackers(opponentSide, 61, 0, 1)
+				attackerG8, _ := b.GetCellAttackers(opponentSide, 62, 0, 1)
+				if attackerF8+attackerG8 == 0 {
+					*mvs = append(*mvs, &Move{
+						IsTurn:   b.turn,
+						Piece:    PieceKing,
+						IsCastle: CastleDirectionBlackRight,
+					})
+				}
+			}
+		}
+	}
+}
+
+func (b *Board) filterInvalidMoves(mvs *[]*Move, kingPos position.Pos) int {
+	opponentSide := b.turn.Opposite()
+	i := 0
+	for _, mv := range *mvs {
+		bb := b.Clone()
+		bb.Apply(mv)
+		if c, _ := bb.GetCellAttackers(opponentSide, kingPos, 0, 1); c == 0 {
+			(*mvs)[i] = mv
+			i++
+		}
+	}
+	return i
+}
+
+func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMask bitmap) {
+	var candidateToBM bitmap
+	candidateToBM |= maskKing[fromPos]
+	candidateToBM &= allowedToMask
+
+	for toPos := position.Pos(0); toPos < TotalCells; toPos++ {
+		toCell := maskCell[toPos] & candidateToBM
+		if toCell == 0 {
+			continue
+		}
+
+		attackerCount, _ := b.GetCellAttackers(b.turn.Opposite(), toPos, fromPos, 1)
+		if attackerCount != 0 {
+			continue
+		}
+
+		isCapture := toCell&b.occupied != 0
+		*mvs = append(*mvs, &Move{
+			From:      fromPos,
+			To:        toPos,
+			Piece:     PieceKing,
+			IsTurn:    b.turn,
+			IsCapture: isCapture,
+		})
+	}
+}
+
+func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, limit int) (int, bitmap) {
+	var count int
+	var attackBM bitmap
+	attackerSideMask := b.sides[attackerSide]
+	posMask := maskCell[pos]
+
+	// find lateral attacker pieces
+	candidateRay := HitLaterals(pos, magicRookMask[pos]&(b.occupied&^maskCell[xrayPos]))
+	attackerLaterals := candidateRay & attackerSideMask & (b.pieces[PieceRook] | b.pieces[PieceQueen])
+	countLateral := attackerLaterals.BitCount()
+	count += countLateral
+	attackBM |= attackerLaterals
+	if count >= limit {
+		return count, attackBM
+	}
+
+	// find diagonal attacker pieces
+	candidateRay = HitDiagonals(pos, magicBishopMask[pos]&(b.occupied&^maskCell[xrayPos]))
+	attackerDiagonals := candidateRay & attackerSideMask & (b.pieces[PieceBishop] | b.pieces[PieceQueen])
+	countDiagonal := attackerDiagonals.BitCount()
+	count += countDiagonal
+	attackBM |= attackerDiagonals
+	if count >= limit {
+		return count, attackBM
+	}
+
+	// fill rays
+	for attackerPos := position.Pos(0); countLateral != 0 && attackerPos < TotalCells; attackerPos++ {
+		if attackerLaterals&maskCell[attackerPos] != 0 {
+			attackBM |= HitLaterals(pos, maskCell[attackerPos]) & HitLaterals(attackerPos, posMask)
+		}
+	}
+	for attackerPos := position.Pos(0); countDiagonal != 0 && attackerPos < TotalCells; attackerPos++ {
+		if attackerDiagonals&maskCell[attackerPos] != 0 {
+			attackBM |= HitDiagonals(pos, maskCell[attackerPos]) & HitDiagonals(attackerPos, posMask)
+		}
+	}
+
+	// find Knight attacks
+	if attackerKnights := maskKnight[pos] & attackerSideMask & b.pieces[PieceKnight]; attackerKnights != 0 {
+		count += attackerKnights.BitCount()
+		attackBM |= attackerKnights
+		if count >= limit {
+			return count, attackBM
+		}
+	}
+
+	// find Pawn attacks
+	if attackerSide == SideWhite {
+		if attackerPawns := (ShiftSW(posMask) | ShiftSE(posMask)) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
+			count += attackerPawns.BitCount()
+			attackBM |= attackerPawns
+			if count >= limit {
+				return count, attackBM
+			}
+		}
+	} else {
+		if attackerPawns := (ShiftNW(posMask) | ShiftNE(posMask)) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
+			count += attackerPawns.BitCount()
+			attackBM |= attackerPawns
+			if count >= limit {
+				return count, attackBM
+			}
+		}
+	}
+
+	// find King attacks
+	if attackersKing := maskKing[pos] & attackerSideMask & b.pieces[PieceKing]; attackersKing != 0 {
+		attackBM |= attackersKing
+	}
+
+	return count, attackBM
 }
 
 func (b *Board) flip(s Side, p Piece, pos position.Pos) {
@@ -611,49 +836,31 @@ func (b *Board) Draw() string {
 }
 
 func (b *Board) DebugString() string {
-	return fmt.Sprintf("cast: %04b\nhalf: %4d\nfull: %4d\nstat: %s", b.castleRights, b.halfMoveClock, b.fullMoveClock, b.State())
+	return fmt.Sprintf("enp : %4s\ncast: %04b\nhalf: %4d\nfull: %4d\nstat: %s", b.enPassant.LS1B().Notation(), b.castleRights, b.halfMoveClock, b.fullMoveClock, b.State())
 }
-
-// func (b *Board) GetSideAndPieces(i position.Pos) (Side, Piece) {
-// 	var s Side
-// 	for side, sideMap := range b.sides {
-// 		if sideMap&maskCell[i] != 0 {
-// 			s = Side(side)
-// 			break
-// 		}
-// 	}
-// 	p := PieceUnknown
-// 	for piece, pieceMap := range b.pieces {
-// 		if pieceMap&maskCell[i] != 0 {
-// 			p = Piece(piece)
-// 			break
-// 		}
-// 	}
-// 	return s, p
-// }
 
 func (b *Board) State() State {
 	if b.state != StateUnknown {
 		return b.state
 	}
 
-	whiteMoves := b.GenerateMoves(SideWhite)
-	if b.isKingChecked(SideWhite) {
-		if len(whiteMoves) == 0 {
-			return StateCheckmateWhite
-		}
-		return StateCheckWhite
-	}
-	blackMoves := b.GenerateMoves(SideBlack)
-	if b.isKingChecked(SideBlack) {
-		if len(blackMoves) == 0 {
+	mvs := b.GenerateMoves()
+	if c, _ := b.GetCellAttackers(b.turn.Opposite(), b.GetBitmap(b.turn, PieceKing).LS1B(), 0, 1); c != 0 {
+		if len(mvs) == 0 {
+			if b.turn == SideWhite {
+				return StateCheckmateWhite
+			}
 			return StateCheckmateBlack
+		}
+		if b.turn == SideWhite {
+			return StateCheckWhite
 		}
 		return StateCheckBlack
 	}
-	if len(whiteMoves) == 0 || len(blackMoves) == 0 {
+	if len(mvs) == 0 {
 		return StateStalemate
 	}
+
 	// checkmate takes precedence over the 50 move rule
 	if b.halfMoveClock >= 100 {
 		return StateFiftyMoveViolated

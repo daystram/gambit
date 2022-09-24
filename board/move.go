@@ -8,7 +8,7 @@ type Move struct {
 
 	IsTurn      Side
 	IsCapture   bool
-	IsCheck     bool
+	IsCheck     bool // not populated on move generation
 	IsCastle    CastleDirection
 	IsEnPassant bool
 	IsPromote   Piece

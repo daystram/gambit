@@ -63,12 +63,12 @@ func Intersect(bms ...bitmap) bitmap {
 	}
 	return u
 }
-func HitDiagonals(pos position.Pos, cell, occupied bitmap) bitmap {
-	return ScanHit(cell, occupied, maskDia[pos]) | ScanHit(cell, occupied, maskADia[pos])
+func HitDiagonals(pos position.Pos, occupied bitmap) bitmap {
+	return ScanHit(maskCell[pos], occupied, maskDia[pos]) | ScanHit(maskCell[pos], occupied, maskADia[pos])
 }
 
-func HitLaterals(pos position.Pos, cell, occupied bitmap) bitmap {
-	return ScanHit(cell, occupied, maskCol[pos.X()]) | ScanHit(cell, occupied, maskRow[pos.Y()])
+func HitLaterals(pos position.Pos, occupied bitmap) bitmap {
+	return ScanHit(maskCell[pos], occupied, maskCol[pos.X()]) | ScanHit(maskCell[pos], occupied, maskRow[pos.Y()])
 }
 
 // ScanHit uses o^(o-2*r) trick.

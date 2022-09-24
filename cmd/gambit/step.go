@@ -20,16 +20,8 @@ func step() error {
 	rand.Seed(1)
 stepLoop:
 	for step := 0; step < 5000; step++ {
-		turn := board.SideWhite
-		if step%2 == 1 {
-			turn = board.SideBlack
-		}
-
-		// drop cache
-		b = b.Clone()
-
 		t1 := time.Now()
-		mvs := b.GenerateMoves(turn)
+		mvs := b.GenerateMoves()
 		t2 := time.Now()
 		timesGenerateMoves = append(timesGenerateMoves, t2.Sub(t1))
 		if len(mvs) == 0 {
@@ -76,14 +68,4 @@ stepLoop:
 	fmt.Println("apply:", avg(timesApply))
 	fmt.Println("state:", avg(timesState))
 	return nil
-}
-
-func dumpHistory(mvs []*board.Move) {
-	for i, mv := range mvs {
-		if mv.IsTurn == board.SideWhite {
-			fmt.Printf("%d.", i/2+1)
-		}
-		fmt.Printf("%s ", mv)
-	}
-	fmt.Println()
 }

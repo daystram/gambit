@@ -50,14 +50,14 @@ func runPerft(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro
 	}
 
 	var sum uint64
-	for _, mv := range b.GenerateMoves(b.Turn()) {
+	for _, mv := range b.GenerateMoves() {
 		var child uint64
 		bb := b.Clone()
 		bb.Apply(mv)
 		if d != 2 {
 			child = runPerft(bb, d-1, false, debug, nodes, cap, enp, cas, pro, chk)
 		} else {
-			leafMoves := bb.GenerateMoves(b.Turn().Opposite())
+			leafMoves := bb.GenerateMoves()
 			child = uint64(len(leafMoves))
 			*nodes += child
 			for _, leaf := range leafMoves {
@@ -94,7 +94,7 @@ func runPerftParallel(b *board.Board, d int, root, debug bool, nodes, cap, enp, 
 
 	var sum uint64
 	var wg sync.WaitGroup
-	for _, mv := range b.GenerateMoves(b.Turn()) {
+	for _, mv := range b.GenerateMoves() {
 		mv := mv
 		wg.Add(1)
 		go func() {
@@ -105,7 +105,7 @@ func runPerftParallel(b *board.Board, d int, root, debug bool, nodes, cap, enp, 
 			if d != 2 {
 				child = runPerftParallel(bb, d-1, false, debug, nodes, cap, enp, cas, pro, chk)
 			} else {
-				leafMoves := bb.GenerateMoves(b.Turn().Opposite())
+				leafMoves := bb.GenerateMoves()
 				child = uint64(len(leafMoves))
 				atomic.AddUint64(nodes, child)
 				for _, leaf := range leafMoves {

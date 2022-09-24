@@ -17,8 +17,7 @@ const (
 var (
 	DefaultStartingPositionFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
-	maskCell = [TotalCells]bitmap{}
-	maskCol  = [Width]bitmap{
+	maskCol = [Width]bitmap{
 		0x_01_01_01_01_01_01_01_01,
 		0x_02_02_02_02_02_02_02_02,
 		0x_04_04_04_04_04_04_04_04,
@@ -38,10 +37,11 @@ var (
 		0x_00_FF_00_00_00_00_00_00,
 		0x_FF_00_00_00_00_00_00_00,
 	}
-	maskDia    = [TotalCells]bitmap{}
-	maskADia   = [TotalCells]bitmap{}
-	maskKnight = [TotalCells]bitmap{}
-	maskKing   = [TotalCells]bitmap{}
+	maskCell   [TotalCells]bitmap
+	maskDia    [TotalCells]bitmap
+	maskADia   [TotalCells]bitmap
+	maskKnight [TotalCells]bitmap
+	maskKing   [TotalCells]bitmap
 
 	maskCastling = [4 + 1]bitmap{}
 	posCastling  = [4 + 1][6 + 1][2]position.Pos{
@@ -70,10 +70,25 @@ var (
 
 	zobristConstantGrid      [2 + 1][6 + 1][64]uint64
 	zobristConstantSideWhite uint64
+
+	magicBishopAttacks [TotalCells][1]bitmap
+	magicBishopMask    [TotalCells]bitmap
+	magicBishopNumber  [TotalCells]bitmap
+	magicRookAttacks   [TotalCells][1]bitmap
+	magicRookMask      [TotalCells]bitmap
+	magicRookNumber    [TotalCells]bitmap
+	magicShifts        uint8 = 5
 )
 
 func init() {
 	start := time.Now()
+	initMask()
+	initZobrist()
+	initMagic()
+	log.Printf("init lookups: %s elapsed\n", time.Since(start))
+}
+
+func initMask() {
 	for pos := position.Pos(0); pos < TotalCells; pos++ {
 		maskCell[pos] = 1 << pos
 	}
@@ -136,7 +151,9 @@ func init() {
 		CastleDirectionBlackRight: maskRow[7] & (maskCol[5] | maskCol[6]),
 		CastleDirectionBlackLeft:  maskRow[7] & (maskCol[1] | maskCol[2] | maskCol[3]),
 	}
+}
 
+func initZobrist() {
 	r := rand.New(rand.NewSource(7))
 	for _, s := range []Side{SideWhite, SideBlack} {
 		for _, p := range []Piece{PiecePawn, PieceBishop, PieceKnight, PieceRook, PieceQueen, PieceKing} {
@@ -146,6 +163,18 @@ func init() {
 		}
 	}
 	zobristConstantSideWhite = r.Uint64()
+}
 
-	log.Printf("init board lookup: %s elapsed\n", time.Since(start))
+func initMagic() {
+	// Bishop
+	for pos := position.Pos(0); pos < TotalCells; pos++ {
+		magicBishopMask[pos] = (maskDia[pos] | maskADia[pos]) &^ maskCell[pos]
+	}
+
+	// Rook
+	for pos := position.Pos(0); pos < TotalCells; pos++ {
+		magicRookMask[pos] = (maskRow[pos/8] | maskCol[pos%8]) &^ maskCell[pos]
+	}
+
+	// TODO: try using magics
 }

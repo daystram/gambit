@@ -13,7 +13,7 @@ type Move struct {
 	IsEnPassant bool
 	IsPromote   Piece
 
-	Score int32 // used for move ordering
+	Score uint8 // used for move ordering
 }
 
 func (mv Move) Equals(other *Move) bool {

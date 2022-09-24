@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/daystram/gambit/board"
@@ -15,7 +16,9 @@ import (
 
 const (
 	Infinity int32 = math.MaxInt32
+	MaxPly   uint8 = 255
 
+	killerCount    = 2
 	scoreCheckmate = Infinity - 2
 )
 
@@ -38,22 +41,60 @@ func (pvl *PVLine) Len() int {
 	return len(pvl.mvs)
 }
 
-func (pvl *PVLine) String() string {
-	var s string
-	for i, mv := range pvl.mvs {
-		if mv == nil {
-			return s
+func (pvl *PVLine) String(b *board.Board) string {
+	return DumpHistory(b, pvl.mvs)
+	// for i, mv := range pvl.mvs {
+	// 	if mv == nil {
+	// 		return s
+	// 	}
+	// 	if b != nil {
+	// 		bb := b.Clone()
+	// 		bb.Apply(mv)
+	// 		mv.IsCheck = bb.State().IsCheck()
+	// 	}
+	// 	s += mv.Algebra()
+	// 	if i != len(pvl.mvs)-1 {
+	// 		if i%2 == 0 {
+	// 			s += " "
+	// 		} else {
+	// 			s += ", "
+	// 		}
+	// 	}
+	// }
+}
+
+func DumpHistory(b *board.Board, mvs []*board.Move) string {
+	if b == nil || mvs == nil || len(mvs) < 1 {
+		return ""
+	}
+	builder := strings.Builder{}
+	bb := b.Clone()
+	fullMoveClock := bb.FullMoveClock()
+	if mvs[0].IsTurn == board.SideBlack {
+		_, _ = builder.WriteString(fmt.Sprintf("%d... ", fullMoveClock))
+	}
+	for i, mv := range mvs {
+		bb.Apply(mv)
+		if mv.IsTurn == board.SideWhite {
+			_, _ = builder.WriteString(fmt.Sprintf("%d. %s", fullMoveClock, mv))
+		} else {
+			_, _ = builder.WriteString(mv.String())
+			fullMoveClock++
 		}
-		s += mv.Algebra()
-		if i != len(pvl.mvs)-1 {
-			if i%2 == 0 {
-				s += " "
-			} else {
-				s += ", "
-			}
+		if bb.State().IsCheck() {
+			_, _ = builder.WriteRune('+')
+		}
+		if bb.State().IsCheckmate() {
+			_, _ = builder.WriteRune('#')
+		}
+		if bb.State().IsDraw() {
+			_, _ = builder.WriteRune('=')
+		}
+		if i < len(mvs)-1 {
+			_, _ = builder.WriteRune(' ')
 		}
 	}
-	return s
+	return builder.String()
 }
 
 type EngineConfig struct {
@@ -66,6 +107,7 @@ type Engine struct {
 	maxDepth uint8
 	timeout  time.Duration
 	tt       *TranspositionTable
+	killers  [MaxPly][killerCount]*board.Move
 
 	searchedNodes int
 }
@@ -119,8 +161,8 @@ func (e *Engine) search(ctx context.Context, b *board.Board) (*board.Move, error
 		bestScore = candidateScore
 
 		message.NewPrinter(language.English).
-			Printf("depth:%d [%s] nodes:%d (%dn/s) t:%s\n    pv: %s\n",
-				d, formatScore(bestScore, pvl), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()), endTime.Sub(startTime), pvl.String())
+			Printf("depth:%d [%s] nodes:%d (%dn/s) t:%s\n    %s\n",
+				d, formatScore(bestScore, pvl), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()), endTime.Sub(startTime), pvl.String(b))
 
 		if bestScore == scoreCheckmate {
 			break
@@ -170,6 +212,7 @@ func (e *Engine) negamax(
 	// generate next moves
 	mvs := b.GenerateMoves()
 
+	// end early if game has ended
 	if len(mvs) == 0 {
 		var score int32
 		st := b.State()
@@ -209,6 +252,17 @@ func (e *Engine) negamax(
 			pvl.Set(mv, childPVL)
 		}
 		if alpha >= beta {
+			// set Killer move
+			if depth > 1 && !bestMove.IsCapture {
+				ply := b.Ply()
+				if !bestMove.Equals(e.killers[ply][0]) {
+					for i := killerCount - 1; i >= 1; i-- {
+						temp := e.killers[ply][i]
+						e.killers[ply][i] = temp
+					}
+					e.killers[ply][0] = bestMove
+				}
+			}
 			break // cut-off
 		}
 		if err != nil {
@@ -257,10 +311,10 @@ func formatScore(s int32, pvl PVLine) string {
 		return "-inf"
 	}
 	if s == scoreCheckmate {
-		return fmt.Sprintf("#+%d", pvl.Len())
+		return fmt.Sprintf("#+%d", pvl.Len()/2+1)
 	}
 	if s == -scoreCheckmate {
-		return fmt.Sprintf("#-%d", pvl.Len())
+		return fmt.Sprintf("#-%d", pvl.Len()/2+1)
 	}
 	if s > 0 {
 		return fmt.Sprintf("+%.2f", float64(s)/100)

@@ -14,12 +14,13 @@ func search(steps int) error {
 	rand.Seed(time.Now().Unix())
 	b, _, _ := board.NewBoard()
 	e := engine.NewEngine(&engine.EngineConfig{
-		MaxDepth: 10,
+		MaxDepth: 12,
 		Timeout:  60 * time.Second,
 	})
 	fmt.Println(b.Draw())
 	fmt.Println(b.FEN())
 	fmt.Println(b.DebugString())
+	initialBoard := b.Clone()
 
 	playingSide := b.Turn()
 	getMove := func(b *board.Board) *board.Move {
@@ -28,6 +29,7 @@ func search(steps int) error {
 			if err != nil {
 				panic(err)
 			}
+			fmt.Println(e.TranspositionStats())
 			return mv
 		} else {
 			mvs := b.GenerateMoves()
@@ -41,15 +43,12 @@ func search(steps int) error {
 
 		// White's move
 		if b.Turn() == board.SideWhite {
+			fmt.Printf("\n>>> %s\n", board.SideWhite)
 			mv := getMove(b)
-			fmt.Println(e.TranspositionStats())
 			b.Apply(mv)
-			if b.State() == board.StateCheckBlack {
-				mv.IsCheck = true
-			}
 			history = append(history, mv)
+			fmt.Printf("--- %s\n", mv)
 
-			fmt.Printf("\n>>> %s: %s\n", mv.IsTurn, mv)
 			fmt.Println(b.FEN())
 			fmt.Println(b.Draw())
 			if !b.State().IsRunning() {
@@ -60,14 +59,12 @@ func search(steps int) error {
 
 		// Black's move
 		if b.Turn() == board.SideBlack {
+			fmt.Printf("\n>>> %s\n", board.SideBlack)
 			mv := getMove(b)
 			b.Apply(mv)
-			if b.State() == board.StateCheckWhite {
-				mv.IsCheck = true
-			}
 			history = append(history, mv)
+			fmt.Printf("--- %s\n", mv)
 
-			fmt.Printf("\n>>> %s: %s\n", mv.IsTurn, mv)
 			fmt.Println(b.FEN())
 			fmt.Println(b.Draw())
 			if !b.State().IsRunning() {
@@ -78,17 +75,7 @@ func search(steps int) error {
 	}
 	log.Println("=============== game ended:", b.State())
 	fmt.Println(b.FEN())
-	dumpHistory(history)
+	fmt.Println(engine.DumpHistory(initialBoard, history))
 
 	return nil
-}
-
-func dumpHistory(mvs []*board.Move) {
-	for i, mv := range mvs {
-		if mv.IsTurn == board.SideWhite {
-			fmt.Printf("%d.", i/2+1)
-		}
-		fmt.Printf("%s ", mv)
-	}
-	fmt.Println()
 }

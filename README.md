@@ -32,6 +32,8 @@
   - [x] Negamax with IDDFS
   - [x] Transposition table
   - [x] Basic move ordering
+  - [x] Transposition table PV move ordering
+  - [x] Killer heuristic move ordering
   - [ ] TBA
 - [ ] Interface
   - [ ] UCI

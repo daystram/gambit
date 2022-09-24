@@ -22,7 +22,9 @@ var (
 		board.SideBlack: {},
 	}
 
-	scoresMVVLVA = [6 + 1][6 + 1]int32{
+	offsetPV     uint8 = 255
+	offsetMVVLVA uint8 = offsetPV - 64
+	scoreMVVLVA        = [6 + 1][6 + 1]uint8{
 		//                     P   N   B   R   Q
 		board.PiecePawn:   {0, 15, 25, 35, 45, 55},
 		board.PieceKnight: {0, 14, 24, 34, 44, 54},
@@ -31,25 +33,32 @@ var (
 		board.PieceQueen:  {0, 11, 21, 31, 41, 51},
 		board.PieceKing:   {0, 10, 20, 30, 40, 50},
 	}
+	scoreKiller uint8 = 10
 )
 
 // TODO: Killer heuristic
 func (e *Engine) scoreMoves(b *board.Board, pv *board.Move, mvs *[]*board.Move) {
 	for i, mv := range *mvs {
-		score := int32(0)
+		var score uint8
 		if mv.Equals(pv) {
-			score += 100
-		}
-		if mv.IsCapture {
+			score = offsetPV
+		} else if mv.IsCapture {
 			capturedPiece, _ := b.GetSideAndPieces(mv.To)
-			score += scoresMVVLVA[mv.Piece][capturedPiece]
+			score = offsetMVVLVA + scoreMVVLVA[mv.Piece][capturedPiece]
+		} else {
+			for i, killer := range e.killers[b.Ply()] {
+				if mv.Equals(killer) {
+					score = offsetMVVLVA - uint8(i+1)*scoreKiller
+					break
+				}
+			}
 		}
 		(*mvs)[i].Score = score
 	}
 }
 
 func (e *Engine) sortMoves(mvs *[]*board.Move, index int) {
-	bestIndex, bestScore := index, int32(0)
+	bestIndex, bestScore := index, uint8(0)
 	for i := index; i < len(*mvs); i++ {
 		mv := (*mvs)[i]
 		if mv.Score > bestScore {

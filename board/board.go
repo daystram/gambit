@@ -32,6 +32,7 @@ type Board struct {
 	castleRights  CastleRights
 	halfMoveClock uint8
 	fullMoveClock uint8
+	ply           uint8
 	state         State
 	turn          Side
 	hash          uint64
@@ -768,6 +769,9 @@ func (b *Board) Apply(mv *Move) {
 		b.fullMoveClock++
 	}
 
+	// update ply
+	b.ply++
+
 	// set update turn
 	b.turn = oppTurn
 	b.hash ^= zobristConstantSideWhite
@@ -837,7 +841,7 @@ func (b *Board) Draw() string {
 }
 
 func (b *Board) DebugString() string {
-	return fmt.Sprintf("turn: %5s\nenp : %5s\ncast:  %04b\nhalf: %5d\nfull: %5d\nstat: %s", b.turn, b.enPassant.LS1B().Notation(), b.castleRights, b.halfMoveClock, b.fullMoveClock, b.State())
+	return fmt.Sprintf("turn: %5s\nenp : %5s\ncast:  %04b\nhalf: %5d\nfull: %5d\nply : %5d\nstat: %s", b.turn, b.enPassant.LS1B().Notation(), b.castleRights, b.halfMoveClock, b.fullMoveClock, b.ply, b.State())
 }
 
 func (b *Board) State() State {
@@ -873,6 +877,10 @@ func (b *Board) Turn() Side {
 	return b.turn
 }
 
+func (b *Board) Ply() uint8 {
+	return b.ply
+}
+
 func (b *Board) HalfMoveClock() uint8 {
 	return b.halfMoveClock
 }
@@ -891,6 +899,7 @@ func (b *Board) Clone() *Board {
 		castleRights:  b.castleRights,
 		halfMoveClock: b.halfMoveClock,
 		fullMoveClock: b.fullMoveClock,
+		ply:           b.ply,
 		state:         b.state,
 		turn:          b.turn,
 		hash:          b.hash,

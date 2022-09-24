@@ -48,6 +48,15 @@ func (s State) IsCheck() bool {
 	}
 }
 
+func (s State) IsCheckmate() bool {
+	switch s {
+	case StateCheckmateWhite, StateCheckmateBlack:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s State) IsDraw() bool {
 	switch s {
 	case StateStalemate, StateFiftyMoveViolated:

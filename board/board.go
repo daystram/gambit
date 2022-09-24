@@ -694,14 +694,26 @@ func (b *Board) Apply(mv *Move) {
 					targetPos = mv.To + Width
 				}
 			} else {
-				mask := maskCell[mv.To]
-				for piece, pieceBM := range b.pieces {
-					if pieceBM&mask != 0 {
-						capturedPiece = Piece(piece)
-						break
+				_, capturedPiece = b.GetSideAndPieces(mv.To)
+				targetPos = mv.To
+				// remove castling rights when Rook is captured
+				if capturedPiece == PieceRook {
+					if ourTurn == SideWhite {
+						if targetPos == 7 {
+							b.castleRights.Set(CastleDirectionWhiteRight, false)
+						}
+						if targetPos == 0 {
+							b.castleRights.Set(CastleDirectionWhiteLeft, false)
+						}
+					} else {
+						if targetPos == 63 {
+							b.castleRights.Set(CastleDirectionBlackRight, false)
+						}
+						if targetPos == 56 {
+							b.castleRights.Set(CastleDirectionBlackLeft, false)
+						}
 					}
 				}
-				targetPos = mv.To
 			}
 			b.flip(oppTurn, capturedPiece, targetPos)
 			b.cells[targetPos] = 0
@@ -738,7 +750,6 @@ func (b *Board) Apply(mv *Move) {
 			b.castleRights.Set(CastleDirectionBlackLeft, false)
 		}
 	}
-	// TODO: remove castling rights whhen Rook is captured
 	if mv.Piece == PieceRook {
 		if maskCell[mv.From]&maskCol[7] != 0 {
 			if ourTurn == SideWhite {

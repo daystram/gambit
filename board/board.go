@@ -628,7 +628,7 @@ func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, l
 
 	// find Pawn attacks
 	if attackerSide == SideWhite {
-		if attackerPawns := (ShiftSW(posMask) | ShiftSE(posMask)) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
+		if attackerPawns := (ShiftSW(posMask&^maskRow[0]&^maskCol[0]) | ShiftSE(posMask&^maskRow[0]&^maskCol[7])) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
 			count += attackerPawns.BitCount()
 			attackBM |= attackerPawns
 			if count >= limit {
@@ -636,7 +636,7 @@ func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, l
 			}
 		}
 	} else {
-		if attackerPawns := (ShiftNW(posMask) | ShiftNE(posMask)) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
+		if attackerPawns := (ShiftNW(posMask&^maskRow[7]&^maskCol[0]) | ShiftNE(posMask&^maskRow[7]&^maskCol[7])) & attackerSideMask & b.pieces[PiecePawn]; attackerPawns != 0 {
 			count += attackerPawns.BitCount()
 			attackBM |= attackerPawns
 			if count >= limit {

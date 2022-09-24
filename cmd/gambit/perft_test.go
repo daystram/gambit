@@ -84,16 +84,16 @@ func TestPerft(t *testing.T) {
 			wantPro:   0,
 			wantChk:   27_351,
 		},
-		// {
-		// 	fen:       "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-		// 	depth:     6,
-		// 	wantNodes: 119_060_324,
-		// 	wantCap:   2_812_008,
-		// 	wantEnp:   5_248,
-		// 	wantCas:   0,
-		// 	wantPro:   0,
-		// 	wantChk:   809_099,
-		// },
+		{
+			fen:       "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+			depth:     6,
+			wantNodes: 119_060_324,
+			wantCap:   2_812_008,
+			wantEnp:   5_248,
+			wantCas:   0,
+			wantPro:   0,
+			wantChk:   809_099,
+		},
 
 		// depth >= 3 failing perft is a known issue
 		{

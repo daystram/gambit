@@ -263,10 +263,12 @@ func (b *Board) FEN() string {
 
 func (b *Board) GenerateMoves() []*Move {
 	mvs := make([]*Move, 0, 64)
+	opponentSide := b.turn.Opposite()
 	sideMask := b.sides[b.turn]
+	nonSelfMask := ^sideMask
 
 	kingPos := b.GetBitmap(b.turn, PieceKing).LS1B()
-	checkerCount, attackedMask := b.GetCellAttackers(b.turn.Opposite(), kingPos, 0, 2)
+	checkerCount, attackedMask := b.GetCellAttackers(opponentSide, kingPos, 0, 2)
 
 	if checkerCount == 2 {
 		b.generateMoveKing(&mvs, kingPos, ^attackedMask&^sideMask)
@@ -279,11 +281,10 @@ func (b *Board) GenerateMoves() []*Move {
 		b.generateMoveBishop(&mvs, sideMask&b.pieces[PieceBishop], attackedMask)
 		b.generateMoveRook(&mvs, sideMask&b.pieces[PieceRook], attackedMask)
 		b.generateMoveQueen(&mvs, sideMask&b.pieces[PieceQueen], attackedMask)
-		b.generateMoveKing(&mvs, kingPos, ^attackedMask&^sideMask)
+		b.generateMoveKing(&mvs, kingPos, (^attackedMask|b.sides[opponentSide])&nonSelfMask)
 		return mvs
 	}
 
-	nonSelfMask := ^sideMask
 	b.generateMovePawn(&mvs, sideMask&b.pieces[PiecePawn], nonSelfMask)
 	b.generateMoveKnight(&mvs, sideMask&b.pieces[PieceKnight], nonSelfMask)
 	b.generateMoveBishop(&mvs, sideMask&b.pieces[PieceBishop], nonSelfMask)
@@ -836,7 +837,7 @@ func (b *Board) Draw() string {
 }
 
 func (b *Board) DebugString() string {
-	return fmt.Sprintf("enp : %4s\ncast: %04b\nhalf: %4d\nfull: %4d\nstat: %s", b.enPassant.LS1B().Notation(), b.castleRights, b.halfMoveClock, b.fullMoveClock, b.State())
+	return fmt.Sprintf("turn: %5s\nenp : %5s\ncast:  %04b\nhalf: %5d\nfull: %5d\nstat: %s", b.turn, b.enPassant.LS1B().Notation(), b.castleRights, b.halfMoveClock, b.fullMoveClock, b.State())
 }
 
 func (b *Board) State() State {

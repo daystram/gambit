@@ -2,6 +2,7 @@ package board
 
 import (
 	"log"
+	"math/rand"
 	"time"
 
 	"github.com/daystram/gambit/position"
@@ -66,6 +67,9 @@ var (
 		CastleDirectionBlackRight: 0b0010,
 		CastleDirectionBlackLeft:  0b0001,
 	}
+
+	zobristConstantGrid      [2 + 1][6 + 1][64]uint64
+	zobristConstantSideWhite uint64
 )
 
 func init() {
@@ -132,6 +136,16 @@ func init() {
 		CastleDirectionBlackRight: maskRow[7] & (maskCol[5] | maskCol[6]),
 		CastleDirectionBlackLeft:  maskRow[7] & (maskCol[1] | maskCol[2] | maskCol[3]),
 	}
+
+	r := rand.New(rand.NewSource(7))
+	for _, s := range []Side{SideWhite, SideBlack} {
+		for _, p := range []Piece{PiecePawn, PieceBishop, PieceKnight, PieceRook, PieceQueen, PieceKing} {
+			for pos := position.Pos(0); pos < TotalCells; pos++ {
+				zobristConstantGrid[s][p][pos] = r.Uint64()
+			}
+		}
+	}
+	zobristConstantSideWhite = r.Uint64()
 
 	log.Printf("init board lookup: %s elapsed\n", time.Since(start))
 }

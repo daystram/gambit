@@ -12,6 +12,9 @@ type Move struct {
 	IsCastle    CastleDirection
 	IsEnPassant bool
 	IsPromote   Piece
+
+	Score         int32
+	CapturedPiece Piece
 }
 
 func (m Move) String() string {

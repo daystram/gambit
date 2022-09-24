@@ -17,6 +17,7 @@ var (
 type bitmap uint64
 type sideBitmaps [3]bitmap
 type pieceBitmaps [7]bitmap
+type cellList [64]uint8
 
 // Little-endian rank-file (LERF) mapping
 type Board struct {
@@ -24,12 +25,13 @@ type Board struct {
 	sides    sideBitmaps
 	pieces   pieceBitmaps
 	occupied bitmap
+	cells    cellList
 
 	// meta
 	enPassant     bitmap
 	castleRights  CastleRights
-	halfMoveClock uint64
-	fullMoveClock uint64
+	halfMoveClock uint8
+	fullMoveClock uint8
 	state         State
 	turn          Side
 	hash          uint64
@@ -54,14 +56,16 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	for _, f := range opts {
 		f(cfg)
 	}
-	sides, pieces, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, err := parseFEN(cfg.fen)
+	sides, pieces, pieceList, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, err := parseFEN(cfg.fen)
 	if err != nil {
 		return nil, SideUnknown, err
 	}
+
 	return &Board{
 		sides:         sides,
 		pieces:        pieces,
 		occupied:      Union(sides[SideBlack], sides[SideWhite]),
+		cells:         pieceList,
 		enPassant:     enPassant,
 		castleRights:  castleRights,
 		halfMoveClock: halfMoveClock,
@@ -70,24 +74,25 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	}, turn, nil
 }
 
-func parseFEN(fen string) (sideBitmaps, pieceBitmaps, CastleRights, bitmap, uint64, uint64, Side, error) {
+func parseFEN(fen string) (sideBitmaps, pieceBitmaps, [64]uint8, CastleRights, bitmap, uint8, uint8, Side, error) {
 	segments := strings.Split(fen, " ")
 	if len(segments) != 6 {
-		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: incorrect number of segments", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: incorrect number of segments", ErrInvalidFEN)
 	}
 
 	var sides sideBitmaps
 	var pieces pieceBitmaps
+	var pieceList [64]uint8
 	rows := strings.Split(segments[0], "/")
 	if len(rows) != int(Height) {
-		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid board configuration", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid board configuration", ErrInvalidFEN)
 	}
 	for y := position.Pos(0); y < Height; y++ {
 		ptrX, ptrY := -1, Height-y-1
 		for x := position.Pos(0); x < Width; x++ {
 			ptrX++
 			if ptrX >= len(rows[ptrY]) {
-				return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: missing cells", ErrInvalidFEN)
+				return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: missing cells", ErrInvalidFEN)
 			}
 			var s Side
 			var p Piece
@@ -123,13 +128,14 @@ func parseFEN(fen string) (sideBitmaps, pieceBitmaps, CastleRights, bitmap, uint
 						x += skip - 1
 						continue
 					}
-					return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: skip out of bounds", ErrInvalidFEN)
+					return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: skip out of bounds", ErrInvalidFEN)
 				}
-				return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: unknown symbol '%s'", ErrInvalidFEN, string(cell))
+				return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: unknown symbol '%s'", ErrInvalidFEN, string(cell))
 			}
 			pos := y*Width + x
 			sides[s] = Set(sides[s], pos, true)
 			pieces[p] = Set(pieces[p], pos, true)
+			pieceList[pos] = uint8(s)<<4 + uint8(p)
 		}
 	}
 
@@ -140,12 +146,12 @@ func parseFEN(fen string) (sideBitmaps, pieceBitmaps, CastleRights, bitmap, uint
 	case "b":
 		turn = SideBlack
 	default:
-		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid turn", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid turn", ErrInvalidFEN)
 	}
 
 	var castleRights CastleRights
 	if len(segments[2]) > 4 {
-		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
 	}
 crLoop:
 	for i, e := range segments[2] {
@@ -162,7 +168,7 @@ crLoop:
 			if i == 0 && e == '-' {
 				break crLoop
 			}
-			return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
+			return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
 		}
 	}
 
@@ -170,25 +176,25 @@ crLoop:
 	if segments[3] != "-" {
 		pos, err := position.NewPosFromNotation(segments[3])
 		if err != nil {
-			return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
+			return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
 		}
 		enPassant = maskCell[pos]
 		if enPassant&(maskRow[2]|maskRow[5]) == 0 {
-			return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
+			return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
 		}
 	}
 
-	halfMoveClock, err := strconv.ParseUint(segments[4], 10, 64)
+	halfMoveClock, err := strconv.ParseUint(segments[4], 10, 8)
 	if err != nil {
-		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid half move clock", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid half move clock", ErrInvalidFEN)
 	}
 
-	fullMoveClock, err := strconv.ParseUint(segments[5], 10, 64)
+	fullMoveClock, err := strconv.ParseUint(segments[5], 10, 8)
 	if err != nil {
-		return sideBitmaps{}, pieceBitmaps{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid full move clock", ErrInvalidFEN)
+		return sideBitmaps{}, pieceBitmaps{}, cellList{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid full move clock", ErrInvalidFEN)
 	}
 
-	return sides, pieces, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, nil
+	return sides, pieces, pieceList, castleRights, enPassant, uint8(halfMoveClock), uint8(fullMoveClock), turn, nil
 }
 
 func (b *Board) FEN() string {
@@ -261,14 +267,14 @@ func (b *Board) GenerateMoves(s Side) []*Move {
 		if Piece(p) == PieceUnknown {
 			continue
 		}
-		mvs = append(mvs, b.GenerateMovesForPiece(s, Piece(p))...)
+		// TODO: tailor move generation based on king check/pinning state
+		b.GenerateMovesForPiece(&mvs, s, Piece(p))
 	}
 	return mvs
 }
 
-func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
+func (b *Board) GenerateMovesForPiece(mvs *[]*Move, s Side, p Piece) {
 	// TRY: if in check, only allow moves to stop it. currently only filter in-post (probably good enough)
-	var mvs []*Move
 	fromBM := b.GetBitmap(s, p)
 	for fromPos := position.Pos(0); fromPos < TotalCells; fromPos++ {
 		// skip if cell is empty
@@ -332,8 +338,9 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 
 				// flag their King check
 				// TRY: do lazily?
-				// mv.IsCheck = bb.isKingChecked(s.Opposite())
-				mvs = append(mvs, mv)
+				mv.IsCheck = bb.isKingChecked(s.Opposite())
+
+				*mvs = append(*mvs, mv)
 			}
 		}
 	}
@@ -356,7 +363,7 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 			if b.castleRights.IsAllowed(d) &&
 				maskCastling[d]&oppositeAttackBM == 0 &&
 				maskCastling[d]&b.occupied == 0 {
-				mvs = append(mvs, &Move{
+				*mvs = append(*mvs, &Move{
 					IsTurn:   s,
 					Piece:    p,
 					IsCastle: d,
@@ -364,7 +371,6 @@ func (b *Board) GenerateMovesForPiece(s Side, p Piece) []*Move {
 			}
 		}
 	}
-	return mvs
 }
 
 func (b *Board) isKingChecked(s Side) bool {
@@ -420,65 +426,84 @@ func (b *Board) genValidDestination(from position.Pos, s Side, p Piece) bitmap {
 	}
 }
 
-func (b *Board) set(s Side, p Piece, pos position.Pos, value bool) {
-	b.sides[s] = Set(b.sides[s], pos, value)
-	b.pieces[p] = Set(b.pieces[p], pos, value)
-	b.occupied = Set(b.occupied, pos, value)
+func (b *Board) flip(s Side, p Piece, pos position.Pos) {
+	b.sides[s] ^= maskCell[pos]
+	b.pieces[p] ^= maskCell[pos]
+	b.occupied ^= maskCell[pos]
+	b.hash ^= zobristConstantGrid[s][p][pos]
 }
 
+// TODO: return undo func?
 func (b *Board) Apply(mv *Move) {
+	ourTurn := b.turn
+	oppTurn := ourTurn.Opposite()
 	if mv.IsCastle != CastleDirectionUnknown {
+		// perform castling
 		hopsKing := posCastling[mv.IsCastle][PieceKing]
 		hopsRook := posCastling[mv.IsCastle][PieceRook]
-		b.set(b.turn, PieceKing, hopsKing[0], false)
-		b.set(b.turn, PieceRook, hopsRook[0], false)
-		b.set(b.turn, PieceKing, hopsKing[1], true)
-		b.set(b.turn, PieceRook, hopsRook[1], true)
-	} else {
-		// remove from
-		b.set(b.turn, mv.Piece, mv.From, false)
 
-		// place to
+		b.flip(ourTurn, PieceKing, hopsKing[0])
+		b.flip(ourTurn, PieceKing, hopsKing[1])
+		b.cells[hopsKing[1]] = b.cells[hopsKing[0]]
+		b.cells[hopsKing[0]] = 0
+
+		b.flip(ourTurn, PieceRook, hopsRook[0])
+		b.flip(ourTurn, PieceRook, hopsRook[1])
+		b.cells[hopsRook[1]] = b.cells[hopsRook[0]]
+		b.cells[hopsRook[0]] = 0
+	} else {
+		// remove moving piece at mv.From
+		b.flip(ourTurn, mv.Piece, mv.From)
+		b.cells[mv.From] = 0
+
+		// remove captured piece at mv.To
 		if mv.IsCapture {
-			// remove captured piece
+			var capturedPiece Piece
+			var targetPos position.Pos
 			if mv.IsEnPassant {
-				var targetPawnPos position.Pos // pos of opponent Pawn to remove by enPassant
-				switch b.turn {
-				case SideWhite:
-					targetPawnPos = mv.To - Width
-				case SideBlack:
-					targetPawnPos = mv.To + Width
+				capturedPiece = PiecePawn
+				targetPos = mv.To - Width // pos of opponent Pawn to remove by enPassant
+				if ourTurn == SideBlack {
+					targetPos = mv.To + Width
 				}
-				b.set(b.turn.Opposite(), PiecePawn, targetPawnPos, false)
 			} else {
-				for p := range b.pieces {
-					if Piece(p) == PieceUnknown {
-						continue
+				mask := maskCell[mv.To]
+				for piece, pieceBM := range b.pieces {
+					if pieceBM&mask != 0 {
+						capturedPiece = Piece(piece)
+						break
 					}
-					b.set(b.turn.Opposite(), Piece(p), mv.To, false)
 				}
+				targetPos = mv.To
 			}
+			b.flip(oppTurn, capturedPiece, targetPos)
+			b.cells[targetPos] = 0
 		}
-		if mv.IsPromote == PieceUnknown {
-			b.set(b.turn, mv.Piece, mv.To, true)
-		} else {
-			b.set(b.turn, mv.IsPromote, mv.To, true)
+
+		// place moving piece at mv.To
+		targetPiece := mv.Piece
+		if mv.IsPromote != PieceUnknown {
+			targetPiece = mv.IsPromote
 		}
+		b.setSideAndPieces(mv.To, ourTurn, targetPiece)
+		b.flip(ourTurn, targetPiece, mv.To)
 	}
 
 	// update enPassantPos
 	b.enPassant = bitmap(0)
 	if mv.Piece == PiecePawn {
-		if b.turn == SideWhite && maskCell[mv.From]&maskRow[1] != 0 && maskCell[mv.To]&maskRow[3] != 0 {
+		if ourTurn == SideWhite && maskCell[mv.From]&maskRow[1] != 0 && maskCell[mv.To]&maskRow[3] != 0 {
 			b.enPassant = maskCell[mv.To-Width]
-		} else if b.turn == SideBlack && maskCell[mv.From]&maskRow[6] != 0 && maskCell[mv.To]&maskRow[4] != 0 {
+		} else if ourTurn == SideBlack && maskCell[mv.From]&maskRow[6] != 0 && maskCell[mv.To]&maskRow[4] != 0 {
 			b.enPassant = maskCell[mv.To+Width]
 		}
 	}
+	b.hash ^= uint64(b.enPassant)
 
 	// update castlingRights
+	// TODO: hash castlingRights
 	if mv.Piece == PieceKing {
-		if b.turn == SideWhite {
+		if ourTurn == SideWhite {
 			b.castleRights.Set(CastleDirectionWhiteRight, false)
 			b.castleRights.Set(CastleDirectionWhiteLeft, false)
 		} else {
@@ -486,16 +511,17 @@ func (b *Board) Apply(mv *Move) {
 			b.castleRights.Set(CastleDirectionBlackLeft, false)
 		}
 	}
+	// TODO: remove castling rights whhen Rook is captured
 	if mv.Piece == PieceRook {
 		if maskCell[mv.From]&maskCol[7] != 0 {
-			if b.turn == SideWhite {
+			if ourTurn == SideWhite {
 				b.castleRights.Set(CastleDirectionWhiteRight, false)
 			} else {
 				b.castleRights.Set(CastleDirectionBlackRight, false)
 			}
 		}
 		if maskCell[mv.From]&maskCol[0] != 0 {
-			if b.turn == SideWhite {
+			if ourTurn == SideWhite {
 				b.castleRights.Set(CastleDirectionWhiteLeft, false)
 			} else {
 				b.castleRights.Set(CastleDirectionBlackLeft, false)
@@ -512,16 +538,26 @@ func (b *Board) Apply(mv *Move) {
 	}
 
 	// update full move clock
-	if b.turn == SideBlack {
+	if ourTurn == SideBlack {
 		b.fullMoveClock++
 	}
 
 	// set update turn
-	b.turn = b.turn.Opposite()
+	b.turn = oppTurn
+	b.hash ^= zobristConstantSideWhite
 }
 
 func (b *Board) GetBitmap(s Side, p Piece) bitmap {
 	return b.sides[s] & b.pieces[p]
+}
+
+func (b *Board) GetSideAndPieces(pos position.Pos) (Side, Piece) {
+	l := b.cells[pos]
+	return Side(l >> 4), Piece(l & 0x0F)
+}
+
+func (b *Board) setSideAndPieces(pos position.Pos, s Side, p Piece) {
+	b.cells[pos] = uint8(s)<<4 + uint8(p)
 }
 
 func (b *Board) Dump() string {
@@ -530,7 +566,7 @@ func (b *Board) Dump() string {
 		_, _ = builder.WriteString("   +---+---+---+---+---+---+---+---+\n")
 		_, _ = builder.WriteString(fmt.Sprintf(" %d |", y+1))
 		for x := position.Pos(0); x < Width; x++ {
-			s, p := b.getSideAndPiecesByPos((y*Width + x))
+			s, p := b.GetSideAndPieces((y*Width + x))
 			sym := p.SymbolFEN(s)
 			if s == SideUnknown {
 				sym = " "
@@ -551,7 +587,7 @@ func (b *Board) Draw() string {
 	for y := position.Pos(Height) - 1; y >= 0; y-- {
 		_, _ = builder.WriteString(fmt.Sprintf("\033[1m %d \033[0m", y+1))
 		for x := position.Pos(0); x < Width; x++ {
-			s, p := b.getSideAndPiecesByPos((y*Width + x))
+			s, p := b.GetSideAndPieces((y*Width + x))
 			sym := p.SymbolUnicode(s, false)
 			if p == PieceUnknown {
 				sym = " "
@@ -578,23 +614,23 @@ func (b *Board) DebugString() string {
 	return fmt.Sprintf("cast: %04b\nhalf: %4d\nfull: %4d\nstat: %s", b.castleRights, b.halfMoveClock, b.fullMoveClock, b.State())
 }
 
-func (b *Board) getSideAndPiecesByPos(i position.Pos) (Side, Piece) {
-	var s Side
-	for side, sideMap := range b.sides {
-		if sideMap&maskCell[i] != 0 {
-			s = Side(side)
-			break
-		}
-	}
-	p := PieceUnknown
-	for piece, pieceMap := range b.pieces {
-		if pieceMap&maskCell[i] != 0 {
-			p = Piece(piece)
-			break
-		}
-	}
-	return s, p
-}
+// func (b *Board) GetSideAndPieces(i position.Pos) (Side, Piece) {
+// 	var s Side
+// 	for side, sideMap := range b.sides {
+// 		if sideMap&maskCell[i] != 0 {
+// 			s = Side(side)
+// 			break
+// 		}
+// 	}
+// 	p := PieceUnknown
+// 	for piece, pieceMap := range b.pieces {
+// 		if pieceMap&maskCell[i] != 0 {
+// 			p = Piece(piece)
+// 			break
+// 		}
+// 	}
+// 	return s, p
+// }
 
 func (b *Board) State() State {
 	if b.state != StateUnknown {
@@ -629,11 +665,20 @@ func (b *Board) Turn() Side {
 	return b.turn
 }
 
+func (b *Board) HalfMoveClock() uint8 {
+	return b.halfMoveClock
+}
+
+func (b *Board) FullMoveClock() uint8 {
+	return b.fullMoveClock
+}
+
 func (b *Board) Clone() *Board {
 	return &Board{
 		sides:         b.sides,
 		pieces:        b.pieces,
 		occupied:      b.occupied,
+		cells:         b.cells,
 		enPassant:     b.enPassant,
 		castleRights:  b.castleRights,
 		halfMoveClock: b.halfMoveClock,

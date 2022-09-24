@@ -7,15 +7,17 @@
 - [x] Move generation
   - [x] Basic moves
   - [x] Perft test
-    - [x] Bug fixes
-    - [ ] Go test
+    - [ ] Bug fixes
+    - [x] Go test
   - [x] King check restriction
   - [x] Castling
   - [x] En-passant
   - [ ] Perfomance optimization
-    - [ ] Code clean up
-    - [ ] TBA
-- [ ] Game state
+    - [x] Code clean up
+    - [x] Rewrite movegen
+    - [ ] Strictly legal movegen
+    - [ ] Magic bitboards
+- [-] Game state
   - [ ] Repetition
   - [x] Half-move clock
   - [x] Full-move clock
@@ -25,8 +27,11 @@
   - [ ] Make-Unmake
 - [ ] Engine
   - [ ] Scoring heuristics
-    - [ ] Piece value
-  - [ ] Search runner
+    - [x] Piece value
+  - [x] Search runner
+  - [x] Negamax with IDDFS
+  - [x] Transposition table
+  - [x] Basic move ordering
   - [ ] TBA
 - [ ] Interface
   - [ ] UCI

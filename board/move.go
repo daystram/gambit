@@ -13,43 +13,53 @@ type Move struct {
 	IsEnPassant bool
 	IsPromote   Piece
 
-	Score         int32
-	CapturedPiece Piece
+	Score int32 // used for move ordering
 }
 
-func (m Move) String() string {
-	return m.Algebra()
+func (mv Move) Equals(other *Move) bool {
+	return other != nil &&
+		mv.From == other.From &&
+		mv.To == other.To &&
+		mv.IsTurn == other.IsTurn &&
+		mv.IsCapture == other.IsCapture &&
+		mv.IsCastle == other.IsCastle &&
+		mv.IsEnPassant == other.IsEnPassant &&
+		mv.IsPromote == other.IsPromote
 }
 
-func (m Move) Algebra() string {
-	if m.IsCastle != CastleDirectionUnknown {
-		if m.IsCastle.IsRight() {
+func (mv Move) String() string {
+	return mv.Algebra()
+}
+
+func (mv Move) Algebra() string {
+	if mv.IsCastle != CastleDirectionUnknown {
+		if mv.IsCastle.IsRight() {
 			return "0-0"
 		}
 		return "0-0-0"
 	}
-	nt := m.Piece.SymbolAlgebra(SideWhite) // SideWhite because it returns capital symbols
-	if m.IsCapture {
-		if m.Piece == PiecePawn {
-			nt += m.From.X().NotationComponentX()
+	nt := mv.Piece.SymbolAlgebra(SideWhite) // SideWhite because it returns capital symbols
+	if mv.IsCapture {
+		if mv.Piece == PiecePawn {
+			nt += mv.From.X().NotationComponentX()
 		} else {
-			nt += m.From.Notation()
+			nt += mv.From.Notation()
 		}
 		nt += "x"
 	}
-	nt += m.To.Notation()
-	if m.IsPromote != PieceUnknown {
-		nt += m.IsPromote.SymbolAlgebra(SideWhite)
+	nt += mv.To.Notation()
+	if mv.IsPromote != PieceUnknown {
+		nt += mv.IsPromote.SymbolAlgebra(SideWhite)
 	}
-	if m.IsCheck {
+	if mv.IsCheck {
 		nt += "+"
 	}
-	if m.IsEnPassant {
+	if mv.IsEnPassant {
 		nt += " e.p."
 	}
 	return nt
 }
 
-func (m Move) UCI() string {
-	return m.From.Notation() + m.To.Notation() + m.IsPromote.SymbolAlgebra(SideBlack)
+func (mv Move) UCI() string {
+	return mv.From.Notation() + mv.To.Notation() + mv.IsPromote.SymbolAlgebra(SideBlack)
 }

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	usage = "usage: gambit [movegen|step|perft]"
+	usage = "usage: gambit [movegen|step|perft|search]"
 )
 
 func main() {
@@ -57,6 +57,19 @@ func realMain(args []string) error {
 			}
 		}
 		err = perft(depth, fen)
+		if err != nil {
+			return err
+		}
+
+	case "search":
+		steps := 50
+		if len(args) > 1 {
+			steps, err = strconv.Atoi(args[1])
+			if err != nil {
+				return err
+			}
+		}
+		err = search(steps)
 		if err != nil {
 			return err
 		}

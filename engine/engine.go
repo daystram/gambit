@@ -178,10 +178,10 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 		if cfg.Debug {
 			e.logger(message.NewPrinter(language.English).
 				Sprintf("depth:%d [%s] nodes:%d (%dn/s) t:%s\n    %s",
-					d, formatScoreDebug(bestScore, pvl), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()), endTime.Sub(startTime), pvl.String(b)))
+					d, formatScoreDebug(bestScore, pvl), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()+1), endTime.Sub(startTime), pvl.String(b)))
 		} else {
 			e.logger(fmt.Sprintf("info depth %d score %s time %d nodes %d nps %d pv %s",
-				d, formatScoreUCI(bestScore, pvl), endTime.Sub(startTime).Milliseconds(), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()), pvl.StringUCI()))
+				d, formatScoreUCI(bestScore, pvl), endTime.Sub(startTime).Milliseconds(), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()+1), pvl.StringUCI()))
 		}
 
 		if bestScore == scoreCheckmate {

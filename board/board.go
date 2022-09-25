@@ -573,9 +573,12 @@ func (b *Board) generateCastling(mvs *[]*Move) {
 				attackerC1, _ := b.GetCellAttackers(opponentSide, 2, 0, 1)
 				attackerD1, _ := b.GetCellAttackers(opponentSide, 3, 0, 1)
 				if attackerB1+attackerC1+attackerD1 == 0 {
+					jump := posCastling[CastleDirectionWhiteLeft][PieceKing]
 					*mvs = append(*mvs, &Move{
-						IsTurn:   b.turn,
+						From:     jump[0],
+						To:       jump[1],
 						Piece:    PieceKing,
+						IsTurn:   b.turn,
 						IsCastle: CastleDirectionWhiteLeft,
 					})
 				}
@@ -585,9 +588,12 @@ func (b *Board) generateCastling(mvs *[]*Move) {
 				attackerF1, _ := b.GetCellAttackers(opponentSide, 5, 0, 1)
 				attackerG1, _ := b.GetCellAttackers(opponentSide, 6, 0, 1)
 				if attackerF1+attackerG1 == 0 {
+					jump := posCastling[CastleDirectionWhiteRight][PieceKing]
 					*mvs = append(*mvs, &Move{
-						IsTurn:   b.turn,
+						From:     jump[0],
+						To:       jump[1],
 						Piece:    PieceKing,
+						IsTurn:   b.turn,
 						IsCastle: CastleDirectionWhiteRight,
 					})
 				}
@@ -599,9 +605,12 @@ func (b *Board) generateCastling(mvs *[]*Move) {
 				attackerC1, _ := b.GetCellAttackers(opponentSide, 58, 0, 1)
 				attackerD1, _ := b.GetCellAttackers(opponentSide, 59, 0, 1)
 				if attackerB1+attackerC1+attackerD1 == 0 {
+					jump := posCastling[CastleDirectionBlackLeft][PieceKing]
 					*mvs = append(*mvs, &Move{
-						IsTurn:   b.turn,
+						From:     jump[0],
+						To:       jump[1],
 						Piece:    PieceKing,
+						IsTurn:   b.turn,
 						IsCastle: CastleDirectionBlackLeft,
 					})
 				}
@@ -611,9 +620,12 @@ func (b *Board) generateCastling(mvs *[]*Move) {
 				attackerF8, _ := b.GetCellAttackers(opponentSide, 61, 0, 1)
 				attackerG8, _ := b.GetCellAttackers(opponentSide, 62, 0, 1)
 				if attackerF8+attackerG8 == 0 {
+					jump := posCastling[CastleDirectionBlackLeft][PieceKing]
 					*mvs = append(*mvs, &Move{
-						IsTurn:   b.turn,
+						From:     jump[0],
+						To:       jump[1],
 						Piece:    PieceKing,
+						IsTurn:   b.turn,
 						IsCastle: CastleDirectionBlackRight,
 					})
 				}

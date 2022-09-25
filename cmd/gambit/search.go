@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -13,10 +14,7 @@ import (
 func search(steps int) error {
 	rand.Seed(time.Now().Unix())
 	b, _, _ := board.NewBoard()
-	e := engine.NewEngine(&engine.EngineConfig{
-		MaxDepth: 12,
-		Timeout:  60 * time.Second,
-	})
+	e := engine.NewEngine(&engine.EngineConfig{})
 	fmt.Println(b.Draw())
 	fmt.Println(b.FEN())
 	fmt.Println(b.DebugString())
@@ -25,7 +23,11 @@ func search(steps int) error {
 	playingSide := b.Turn()
 	getMove := func(b *board.Board) *board.Move {
 		if b.Turn() == playingSide {
-			mv, err := e.Search(b)
+			mv, err := e.Search(context.Background(), b, &engine.SearchConfig{
+				MaxDepth: 12,
+				Timeout:  30 * time.Second,
+				Debug:    true,
+			})
 			if err != nil {
 				panic(err)
 			}

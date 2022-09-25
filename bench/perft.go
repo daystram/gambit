@@ -1,7 +1,7 @@
-package main
+package bench
 
 import (
-	"log"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,38 +12,36 @@ import (
 	"github.com/daystram/gambit/board"
 )
 
-func perft(depth int, fen string) error {
-	for _, p := range []struct {
-		name string
-		f    perftFunc
-	}{
-		{name: "parallel dfs", f: runPerftParallel},
-		{name: "dfs", f: runPerft},
-	} {
-		log.Printf("============ perft(%d): %s\n", depth, p.name)
-
-		var nodes, cap, enp, cas, pro, chk uint64
-		b, _, err := board.NewBoard(
-			board.WithFEN(fen),
-		)
-		if err != nil {
-			return err
-		}
-
-		start := time.Now()
-		p.f(b, depth, true, true, &nodes, &cap, &enp, &cas, &pro, &chk)
-		end := time.Now()
-
-		log.Println(message.NewPrinter(language.English).
-			Sprintf("d=%d nodes=%d rate=%dn/s cap=%d enp=%d cas=%d pro=%d chk=%d (%.3fs elapsed)",
-				depth, nodes, int(float64(nodes)/end.Sub(start).Seconds()), cap, enp, cas, pro, chk, end.Sub(start).Seconds()))
+func Perft(depth int, fen string, parallel, verbose bool, out chan string) error {
+	var nodes, cap, enp, cas, pro, chk uint64
+	b, _, err := board.NewBoard(
+		board.WithFEN(fen),
+	)
+	if err != nil {
+		return err
 	}
+
+	var run perftFunc
+	if parallel {
+		run = runPerftParallel
+	} else {
+		run = runPerft
+	}
+
+	start := time.Now()
+	run(b, depth, true, true, out, &nodes, &cap, &enp, &cas, &pro, &chk)
+	end := time.Now()
+
+	out <- message.NewPrinter(language.English).
+		Sprintf("d=%d nodes=%d rate=%dn/s cap=%d enp=%d cas=%d pro=%d chk=%d (%.3fs elapsed)",
+			depth, nodes, int(float64(nodes)/end.Sub(start).Seconds()), cap, enp, cas, pro, chk, end.Sub(start).Seconds())
+
 	return nil
 }
 
-type perftFunc func(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro, chk *uint64) uint64
+type perftFunc func(b *board.Board, d int, root, verbose bool, out chan string, nodes, cap, enp, cas, pro, chk *uint64) uint64
 
-func runPerft(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
+func runPerft(b *board.Board, d int, root, verbose bool, out chan string, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
 	if d == 0 {
 		*nodes++
 		return 1
@@ -55,7 +53,7 @@ func runPerft(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro
 		bb := b.Clone()
 		bb.Apply(mv)
 		if d != 2 {
-			child = runPerft(bb, d-1, false, debug, nodes, cap, enp, cas, pro, chk)
+			child = runPerft(bb, d-1, false, verbose, out, nodes, cap, enp, cas, pro, chk)
 		} else {
 			leafMoves := bb.GenerateMoves()
 			child = uint64(len(leafMoves))
@@ -78,15 +76,15 @@ func runPerft(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro
 				}
 			}
 		}
-		if debug && root {
-			log.Printf("%s: %d\n", mv.UCI(), child)
+		if verbose && root {
+			out <- fmt.Sprintf("%s: %d", mv.UCI(), child)
 		}
 		sum += child
 	}
 	return sum
 }
 
-func runPerftParallel(b *board.Board, d int, root, debug bool, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
+func runPerftParallel(b *board.Board, d int, root, verbose bool, out chan string, nodes, cap, enp, cas, pro, chk *uint64) uint64 {
 	if d == 0 {
 		atomic.AddUint64(nodes, 1)
 		return 1
@@ -103,7 +101,7 @@ func runPerftParallel(b *board.Board, d int, root, debug bool, nodes, cap, enp, 
 			bb := b.Clone()
 			bb.Apply(mv)
 			if d != 2 {
-				child = runPerftParallel(bb, d-1, false, debug, nodes, cap, enp, cas, pro, chk)
+				child = runPerftParallel(bb, d-1, false, verbose, out, nodes, cap, enp, cas, pro, chk)
 			} else {
 				leafMoves := bb.GenerateMoves()
 				child = uint64(len(leafMoves))
@@ -126,8 +124,8 @@ func runPerftParallel(b *board.Board, d int, root, debug bool, nodes, cap, enp, 
 					}
 				}
 			}
-			if debug && root {
-				log.Printf("%s: %d\n", mv.UCI(), child)
+			if verbose && root {
+				out <- fmt.Sprintf("%s: %d", mv.UCI(), child)
 			}
 			atomic.AddUint64(&sum, child)
 		}()

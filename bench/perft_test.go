@@ -1,4 +1,4 @@
-package main
+package bench
 
 import (
 	"fmt"
@@ -129,7 +129,7 @@ func TestPerft(t *testing.T) {
 			t.Logf("\n%s\n", b.Draw())
 
 			var nodes, cap, enp, cas, pro, chk uint64
-			runPerftParallel(b, tt.depth, true, false, &nodes, &cap, &enp, &cas, &pro, &chk)
+			runPerftParallel(b, tt.depth, true, false, nil, &nodes, &cap, &enp, &cas, &pro, &chk)
 
 			if nodes != tt.wantNodes {
 				t.Errorf("unexpected nodes: got=%d want=%d", nodes, tt.wantNodes)

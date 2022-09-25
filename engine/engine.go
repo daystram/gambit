@@ -18,9 +18,16 @@ const (
 	Infinity int32 = math.MaxInt32
 	MaxPly   uint8 = 255
 
+	DefaultDepth           uint8 = 10
+	DefaultTimeoutDuration       = 10 * time.Second
+
 	killerCount    = 2
 	scoreCheckmate = Infinity - 2
 )
+
+func DefaultLogger(a ...any) {
+	fmt.Println(a...)
+}
 
 type PVLine struct {
 	mvs []*board.Move
@@ -39,6 +46,17 @@ func (pvl *PVLine) Set(mv *board.Move, nextPVL PVLine) {
 
 func (pvl *PVLine) Len() int {
 	return len(pvl.mvs)
+}
+
+func (pvl *PVLine) StringUCI() string {
+	builder := strings.Builder{}
+	for i, mv := range pvl.mvs {
+		_, _ = builder.WriteString(mv.UCI())
+		if i < len(pvl.mvs)-1 {
+			_, _ = builder.WriteRune(' ')
+		}
+	}
+	return builder.String()
 }
 
 func (pvl *PVLine) String(b *board.Board) string {
@@ -80,58 +98,74 @@ func DumpHistory(b *board.Board, mvs []*board.Move) string {
 }
 
 type EngineConfig struct {
-	MaxDepth      int
-	Timeout       time.Duration
 	HashTableSize uint64
+	Logger        func(...any)
+}
+
+type SearchConfig struct {
+	MaxDepth uint8
+	Timeout  time.Duration
+	Debug    bool
 }
 
 type Engine struct {
-	maxDepth uint8
-	timeout  time.Duration
-	tt       *TranspositionTable
-	killers  [MaxPly][killerCount]*board.Move
+	tt      *TranspositionTable
+	killers [MaxPly][killerCount]*board.Move
 
 	searchedNodes int
+	logger        func(...any)
 }
 
 func NewEngine(cfg *EngineConfig) *Engine {
 	if cfg.HashTableSize == 0 {
 		cfg.HashTableSize = DefaultHashTableSize
 	}
+	if cfg.Logger == nil {
+		cfg.Logger = DefaultLogger
+	}
+
 	return &Engine{
-		maxDepth: uint8(cfg.MaxDepth),
-		timeout:  cfg.Timeout,
-		tt:       NewTranspositionTable(cfg.HashTableSize),
+		tt:     NewTranspositionTable(cfg.HashTableSize),
+		logger: cfg.Logger,
 	}
 }
 
-func (e *Engine) Search(b *board.Board) (*board.Move, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.timeout)
+func (e *Engine) Search(ctx context.Context, b *board.Board, cfg *SearchConfig) (*board.Move, error) {
+	if cfg.MaxDepth == 0 || cfg.MaxDepth == MaxPly {
+		cfg.MaxDepth = DefaultDepth
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = DefaultTimeoutDuration
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 
-	mv, err := e.search(ctx, b)
-	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+	mv, err := e.search(ctx, b, cfg)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		return nil, err
 	}
 	if mv == nil {
-		return nil, errors.New("cannot resolve next move")
+		return nil, errors.New("cannot resolve best move")
 	}
 
 	return mv, nil
 }
 
-func (e *Engine) search(ctx context.Context, b *board.Board) (*board.Move, error) {
+func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) (*board.Move, error) {
+	var err error
 	var bestMove *board.Move
 	var bestScore int32
 
 	// TODO: Null-move heuristic (may not be necessary for now)
-	for d := uint8(1); d < e.maxDepth+1; d++ {
+	for d := uint8(1); d < cfg.MaxDepth+1; d++ {
 		e.searchedNodes = 0
 		e.tt.ResetStats()
 		pvl := PVLine{}
 
+		var candidateScore int32
 		startTime := time.Now()
-		candidateScore, err := e.negamax(ctx, b, nil, &pvl, d, -Infinity, Infinity)
+		candidateScore, err = e.negamax(ctx, b, nil, &pvl, d, -Infinity, Infinity)
 		endTime := time.Now()
 
 		if err != nil {
@@ -141,16 +175,21 @@ func (e *Engine) search(ctx context.Context, b *board.Board) (*board.Move, error
 		bestMove = pvl.GetPV()
 		bestScore = candidateScore
 
-		message.NewPrinter(language.English).
-			Printf("depth:%d [%s] nodes:%d (%dn/s) t:%s\n    %s\n",
-				d, formatScore(bestScore, pvl), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()), endTime.Sub(startTime), pvl.String(b))
+		if cfg.Debug {
+			e.logger(message.NewPrinter(language.English).
+				Sprintf("depth:%d [%s] nodes:%d (%dn/s) t:%s\n    %s",
+					d, formatScoreDebug(bestScore, pvl), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()), endTime.Sub(startTime), pvl.String(b)))
+		} else {
+			e.logger(fmt.Sprintf("info depth %d score %s time %d nodes %d nps %d pv %s",
+				d, formatScoreUCI(bestScore, pvl), endTime.Sub(startTime).Milliseconds(), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()), pvl.StringUCI()))
+		}
 
 		if bestScore == scoreCheckmate {
 			break
 		}
 
 	}
-	return bestMove, nil
+	return bestMove, err
 }
 
 // For a given board, regardless turn, we always want to maximize alpha.
@@ -284,7 +323,7 @@ func max[T constraints.Ordered](x1, x2 T) T {
 	return x2
 }
 
-func formatScore(s int32, pvl PVLine) string {
+func formatScoreDebug(s int32, pvl PVLine) string {
 	if s == Infinity {
 		return "+inf"
 	}
@@ -304,4 +343,14 @@ func formatScore(s int32, pvl PVLine) string {
 		return fmt.Sprintf("%.2f", float64(s)/100)
 	}
 	return "0"
+}
+
+func formatScoreUCI(s int32, pvl PVLine) string {
+	if s == scoreCheckmate {
+		return fmt.Sprintf("mate %d", pvl.Len()/2+1)
+	}
+	if s == -scoreCheckmate {
+		return fmt.Sprintf("mate -%d", pvl.Len()/2+1)
+	}
+	return fmt.Sprintf("%d", s)
 }

@@ -279,7 +279,7 @@ func (b *Board) GenerateMoves() []*Move {
 	checkerCount, attackedMask := b.GetCellAttackers(opponentSide, kingPos, 0, 2)
 
 	if checkerCount == 2 {
-		b.generateMoveKing(&mvs, kingPos, ^attackedMask&^sideMask)
+		b.generateMoveKing(&mvs, kingPos, (^attackedMask|b.sides[opponentSide])&nonSelfMask)
 		return mvs
 	}
 
@@ -542,13 +542,14 @@ func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) 
 
 func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMask bitmap) {
 	candidateToBM := maskKing[fromPos] & allowedToMask
+	oppTurn := b.turn.Opposite()
 
 	for candidateToBM != 0 {
 		toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
 		toCell := maskCell[toPos] & candidateToBM
 		candidateToBM &= candidateToBM - 1
 
-		attackerCount, _ := b.GetCellAttackers(b.turn.Opposite(), toPos, fromPos, 1)
+		attackerCount, _ := b.GetCellAttackers(oppTurn, toPos, fromPos, 1)
 		if attackerCount != 0 {
 			continue
 		}

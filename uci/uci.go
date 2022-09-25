@@ -21,7 +21,6 @@ var (
 
 	defaultOptions = options{
 		debug:         false,
-		timeout:       engine.DefaultTimeoutDuration,
 		hashTableSize: engine.DefaultHashTableSize,
 		parallelPerft: true,
 	}
@@ -29,7 +28,6 @@ var (
 
 type options struct {
 	debug         bool
-	timeout       time.Duration
 	hashTableSize uint64
 	parallelPerft bool
 }
@@ -91,7 +89,6 @@ func (i *Interface) commandUCI(_ context.Context) {
 	i.println(fmt.Sprintf("id name %s", EngineName))
 	i.println(fmt.Sprintf("id author %s", EngineAuthor))
 	i.println(fmt.Sprintf("option name Debug type check default %v", defaultOptions.debug))
-	i.println(fmt.Sprintf("option name Timeout type spin default %d min 100 max 3600000", defaultOptions.timeout.Milliseconds()))
 	i.println(fmt.Sprintf("option name Hash type spin default %d min 0 max 16777216", defaultOptions.hashTableSize))
 	i.println("uciok")
 }
@@ -114,18 +111,18 @@ func (i *Interface) commandSetOption(_ context.Context, args []string) {
 			return
 		}
 		i.options.debug = value
-	case "timeout":
-		value, err := strconv.ParseUint(valueStr, 10, 64)
-		if err != nil || value < 100 || value > 3600000 {
-			return
-		}
-		i.options.timeout = time.Duration(value * uint64(time.Millisecond))
 	case "hash":
 		value, err := strconv.ParseUint(valueStr, 10, 64)
 		if err != nil || value > 1<<24 {
 			return
 		}
 		i.options.hashTableSize = value
+	case "parallelperft":
+		value, err := strconv.ParseBool(valueStr)
+		if err != nil {
+			return
+		}
+		i.options.parallelPerft = value
 	}
 }
 
@@ -174,8 +171,8 @@ func (i *Interface) commandDraw(_ context.Context) {
 
 func (i *Interface) commandGo(ctx context.Context, args []string) {
 	cfg := &engine.SearchConfig{
-		MaxDepth: 15,
-		Timeout:  i.options.timeout,
+		MaxDepth: engine.DefaultDepth,
+		Timeout:  engine.DefaultTimeoutDuration,
 	}
 	if len(args) > 0 {
 		switch args[0] {
@@ -192,6 +189,16 @@ func (i *Interface) commandGo(ctx context.Context, args []string) {
 				return
 			}
 			cfg.MaxDepth = uint8(depth)
+
+		case "movetime":
+			if len(args) != 2 {
+				return
+			}
+			timeout, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			cfg.Timeout = time.Duration(timeout * uint64(time.Millisecond))
 
 		case "perft":
 			if len(args) != 2 {

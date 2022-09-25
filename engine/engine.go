@@ -16,9 +16,10 @@ import (
 
 const (
 	Infinity int32 = math.MaxInt32
-	MaxPly   uint8 = 255
 
-	DefaultDepth           uint8 = 10
+	MaxDepth               uint8 = 255
+	MaxTimeoutDuration           = time.Hour
+	DefaultDepth           uint8 = 12
 	DefaultTimeoutDuration       = 10 * time.Second
 
 	killerCount    = 2
@@ -110,7 +111,7 @@ type SearchConfig struct {
 
 type Engine struct {
 	tt      *TranspositionTable
-	killers [MaxPly][killerCount]*board.Move
+	killers [MaxDepth][killerCount]*board.Move
 
 	searchedNodes int
 	logger        func(...any)
@@ -131,11 +132,17 @@ func NewEngine(cfg *EngineConfig) *Engine {
 }
 
 func (e *Engine) Search(ctx context.Context, b *board.Board, cfg *SearchConfig) (*board.Move, error) {
-	if cfg.MaxDepth == 0 || cfg.MaxDepth == MaxPly {
+	if cfg.MaxDepth == 0 {
 		cfg.MaxDepth = DefaultDepth
+	}
+	if cfg.MaxDepth >= MaxDepth {
+		cfg.MaxDepth = MaxDepth - 1
 	}
 	if cfg.Timeout == 0 {
 		cfg.Timeout = DefaultTimeoutDuration
+	}
+	if cfg.Timeout >= MaxTimeoutDuration {
+		cfg.Timeout = MaxTimeoutDuration
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
@@ -213,7 +220,7 @@ func (e *Engine) negamax(
 
 	// check from TranspositionTable
 	typ, ttMove, ttScore, ttDepth, ok := e.tt.Get(b)
-	if ok && ttDepth >= depth {
+	if ok && ttDepth == depth {
 		switch typ {
 		case EntryTypeExact:
 			pvl.Set(ttMove, PVLine{})
@@ -352,5 +359,5 @@ func formatScoreUCI(s int32, pvl PVLine) string {
 	if s == -scoreCheckmate {
 		return fmt.Sprintf("mate -%d", pvl.Len()/2+1)
 	}
-	return fmt.Sprintf("%d", s)
+	return fmt.Sprintf("cp %d", s)
 }

@@ -59,9 +59,12 @@ func (i *Interface) Run() error {
 		if err != nil {
 			return err
 		}
-		cmd = strings.TrimSpace(cmd)
+		args := strings.Fields(strings.TrimSpace(cmd))
+		if len(args) == 0 {
+			continue
+		}
 
-		switch args := strings.Split(cmd, " "); args[0] {
+		switch args[0] {
 		case "uci":
 			i.commandUCI(ctx)
 		case "ucinewgame":
@@ -87,9 +90,9 @@ func (i *Interface) Run() error {
 func (i *Interface) commandUCI(_ context.Context) {
 	i.println(fmt.Sprintf("id name %s", EngineName))
 	i.println(fmt.Sprintf("id author %s", EngineAuthor))
-	i.println(fmt.Sprintf("option Debug type check default %v", defaultOptions.debug))
-	i.println(fmt.Sprintf("option Timeout type spin default %d min 100 max 3600000", defaultOptions.timeout.Milliseconds()))
-	i.println(fmt.Sprintf("option Hash type spin default %d min 0 max 16777216", defaultOptions.hashTableSize))
+	i.println(fmt.Sprintf("option name Debug type check default %v", defaultOptions.debug))
+	i.println(fmt.Sprintf("option name Timeout type spin default %d min 100 max 3600000", defaultOptions.timeout.Milliseconds()))
+	i.println(fmt.Sprintf("option name Hash type spin default %d min 0 max 16777216", defaultOptions.hashTableSize))
 	i.println("uciok")
 }
 
@@ -134,9 +137,14 @@ func (i *Interface) commandPosition(_ context.Context, args []string) {
 	var fen string
 	switch args[0] {
 	case "fen":
-		fen = strings.Join(args[1:], " ")
+		if len(args) < 7 {
+			panic("bad fen")
+		}
+		fen = strings.Join(args[1:7], " ")
+		args = args[7:]
 	case "startpos":
 		fen = board.DefaultStartingPositionFEN
+		args = args[1:]
 	default:
 		return
 	}
@@ -145,16 +153,46 @@ func (i *Interface) commandPosition(_ context.Context, args []string) {
 	if err != nil {
 		return
 	}
+
+	if len(args) > 0 && args[0] == "moves" {
+		for _, notation := range args[1:] {
+			mv, err := b.NewMoveFromUCI(notation)
+			if err != nil {
+				return
+			}
+			b.Apply(mv)
+		}
+	}
+
 	i.board = b
 }
 
 func (i *Interface) commandDraw(_ context.Context) {
 	i.println(i.board.Draw())
+	i.println(i.board.FEN())
 }
 
 func (i *Interface) commandGo(ctx context.Context, args []string) {
+	cfg := &engine.SearchConfig{
+		MaxDepth: 15,
+		Timeout:  i.options.timeout,
+	}
 	if len(args) > 0 {
-		switch mode := args[0]; mode {
+		switch args[0] {
+		case "infinite":
+			cfg.MaxDepth = engine.MaxDepth
+			cfg.Timeout = engine.MaxTimeoutDuration
+
+		case "depth":
+			if len(args) != 2 {
+				return
+			}
+			depth, err := strconv.ParseUint(args[1], 10, 8)
+			if err != nil {
+				return
+			}
+			cfg.MaxDepth = uint8(depth)
+
 		case "perft":
 			if len(args) != 2 {
 				return
@@ -187,10 +225,7 @@ func (i *Interface) commandGo(ctx context.Context, args []string) {
 		i.engineRunning = true
 		defer engineCancel()
 
-		bestMove, err := i.engine.Search(engineCtx, i.board, &engine.SearchConfig{
-			MaxDepth: 15,
-			Timeout:  i.options.timeout,
-		})
+		bestMove, err := i.engine.Search(engineCtx, i.board, cfg)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			panic(err)
 		}

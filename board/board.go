@@ -12,7 +12,8 @@ import (
 )
 
 var (
-	ErrInvalidFEN = errors.New("invalid fen")
+	ErrInvalidFEN  = errors.New("invalid fen")
+	ErrInvalidMove = errors.New("invalid move")
 )
 
 type bitmap uint64
@@ -653,6 +654,52 @@ func (b *Board) flip(s Side, p Piece, pos position.Pos) {
 	b.pieces[p] ^= maskCell[pos]
 	b.occupied ^= maskCell[pos]
 	b.hash ^= zobristConstantGrid[s][p][pos]
+}
+
+func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
+	if len(notation) < 4 || len(notation) > 5 {
+		return nil, ErrInvalidMove
+	}
+
+	var err error
+	mv := &Move{}
+
+	mv.From, err = position.NewPosFromNotation(notation[0:2])
+	if err != nil {
+		return nil, err
+	}
+	mv.To, err = position.NewPosFromNotation(notation[2:4])
+	if err != nil {
+		return nil, err
+	}
+	mv.IsTurn, mv.Piece = b.GetSideAndPieces(mv.From)
+	mv.IsCapture = b.occupied&maskCell[mv.To] != 0
+	if mv.Piece == PieceKing {
+		switch notation {
+		case "e1g1":
+			mv.IsCastle = CastleDirectionWhiteRight
+		case "e1c1":
+			mv.IsCastle = CastleDirectionWhiteLeft
+		case "e7g7":
+			mv.IsCastle = CastleDirectionBlackRight
+		case "e7c7":
+			mv.IsCastle = CastleDirectionBlackLeft
+		}
+	}
+	mv.IsEnPassant = mv.Piece == PiecePawn && maskCell[mv.To] == b.enPassant
+	if len(notation) == 5 {
+		switch notation[4] {
+		case 'n':
+			mv.IsPromote = PiecePawn
+		case 'b':
+			mv.IsPromote = PieceBishop
+		case 'r':
+			mv.IsPromote = PieceKnight
+		case 'q':
+			mv.IsPromote = PieceRook
+		}
+	}
+	return mv, nil
 }
 
 // TODO: return undo func?

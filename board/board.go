@@ -290,7 +290,10 @@ func (b *Board) GenerateMoves() []*Move {
 		b.generateMoveRook(&mvs, sideMask&b.pieces[PieceRook], attackedMask)
 		b.generateMoveQueen(&mvs, sideMask&b.pieces[PieceQueen], attackedMask)
 		b.generateMoveKing(&mvs, kingPos, (^attackedMask|b.sides[opponentSide])&nonSelfMask)
-		return mvs
+
+		// TODO: try strictly legal generator and remove this
+		i := b.filterInvalidMoves(&mvs)
+		return mvs[:i]
 	}
 
 	b.generateMovePawn(&mvs, sideMask&b.pieces[PiecePawn], nonSelfMask)
@@ -302,7 +305,7 @@ func (b *Board) GenerateMoves() []*Move {
 	b.generateCastling(&mvs)
 
 	// TODO: try strictly legal generator and remove this
-	i := b.filterInvalidMoves(&mvs, kingPos)
+	i := b.filterInvalidMoves(&mvs)
 	return mvs[:i]
 }
 
@@ -637,13 +640,13 @@ func (b *Board) generateCastling(mvs *[]*Move) {
 	}
 }
 
-func (b *Board) filterInvalidMoves(mvs *[]*Move, kingPos position.Pos) int {
-	opponentSide := b.turn.Opposite()
+func (b *Board) filterInvalidMoves(mvs *[]*Move) int {
+	ourSide, opponentSide := b.turn, b.turn.Opposite()
 	i := 0
 	for _, mv := range *mvs {
 		bb := b.Clone()
 		bb.Apply(mv)
-		if c, _ := bb.GetCellAttackers(opponentSide, kingPos, 0, 1); c == 0 {
+		if c, _ := bb.GetCellAttackers(opponentSide, bb.GetBitmap(ourSide, PieceKing).LS1B(), 0, 10); c == 0 {
 			(*mvs)[i] = mv
 			i++
 		}

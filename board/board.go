@@ -681,9 +681,9 @@ func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
 			mv.IsCastle = CastleDirectionWhiteRight
 		case "e1c1":
 			mv.IsCastle = CastleDirectionWhiteLeft
-		case "e7g7":
+		case "e8g8":
 			mv.IsCastle = CastleDirectionBlackRight
-		case "e7c7":
+		case "e8c8":
 			mv.IsCastle = CastleDirectionBlackLeft
 		}
 	}

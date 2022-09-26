@@ -43,12 +43,11 @@ func NewTranspositionTable(size uint64) *TranspositionTable {
 	}
 }
 
-func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, score int32, depth uint8) {
+func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, score int32, depth, age uint8) {
 	hash := b.Hash()
 	index := hash & t.maskHash
 	e := t.table[index]
-	age := b.HalfMoveClock()
-	if e == nil || e.age < age || e.depth > depth {
+	if e == nil || e.age != age || e.depth <= depth {
 		t.writes++
 		t.table[index] = &entry{
 			typ:   typ,
@@ -62,11 +61,11 @@ func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, 
 	}
 }
 
-func (t *TranspositionTable) Get(b *board.Board) (EntryType, *board.Move, int32, uint8, bool) {
+func (t *TranspositionTable) Get(b *board.Board, age uint8) (EntryType, *board.Move, int32, uint8, bool) {
 	hash := b.Hash()
 	index := hash & t.maskHash
 	e := t.table[index]
-	if e == nil || e.hash != hash || e.age < b.HalfMoveClock() {
+	if e == nil || e.hash != hash || e.age != age {
 		t.misses++
 		return EntryTypeUnknown, nil, 0, 0, false
 	}

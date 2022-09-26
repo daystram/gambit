@@ -36,7 +36,6 @@ var (
 	scoreKiller uint8 = 10
 )
 
-// TODO: PST heuristic
 func (e *Engine) scoreMoves(b *board.Board, pv *board.Move, mvs *[]*board.Move) {
 	for i, mv := range *mvs {
 		var score uint8
@@ -72,8 +71,10 @@ func (e *Engine) sortMoves(mvs *[]*board.Move, index int) {
 }
 
 // +ve for our side, -ve for opponent
-func (e *Engine) evaluate(b *board.Board, mv *board.Move) int32 {
+func (e *Engine) evaluate(b *board.Board) int32 {
 	ourTurn := b.Turn()
+
+	// TODO: check game state here?
 
 	var totalScorePiece int32
 	scorePieceWhite, scorePieceBlack := b.GetMaterialBalance()
@@ -83,7 +84,7 @@ func (e *Engine) evaluate(b *board.Board, mv *board.Move) int32 {
 		totalScorePiece = int32(scorePieceBlack) - int32(scorePieceWhite)
 	}
 
-	// TODO: support other pieces
+	// TODO: PST heuristic
 	var totalScorePiecePosition int32
 	for _, p := range []board.Piece{board.PiecePawn} {
 		var pos position.Pos

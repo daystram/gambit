@@ -23,7 +23,7 @@ const (
 	DefaultTimeoutDuration       = 10 * time.Second
 
 	killerCount    = 2
-	scoreCheckmate = Infinity - 2
+	scoreCheckmate = Infinity - 1
 )
 
 func DefaultLogger(a ...any) {
@@ -113,6 +113,7 @@ type Engine struct {
 	tt      *TranspositionTable
 	killers [MaxDepth][killerCount]*board.Move
 
+	ply           uint8
 	searchedNodes int
 	logger        func(...any)
 }
@@ -163,6 +164,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 	var err error
 	var bestMove *board.Move
 	var bestScore int32
+	e.ply = b.Ply()
 
 	// TODO: Null-move heuristic (may not be necessary for now)
 	for d := uint8(1); d < cfg.MaxDepth+1; d++ {
@@ -172,7 +174,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 		var candidateScore int32
 		startTime := time.Now()
-		candidateScore, err = e.negamax(ctx, b, nil, &pvl, d, -Infinity, Infinity)
+		candidateScore, err = e.negamax(ctx, b, &pvl, d, -Infinity, Infinity)
 		endTime := time.Now()
 
 		if err != nil {
@@ -191,10 +193,9 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 				d, formatScoreUCI(bestScore, pvl), endTime.Sub(startTime).Milliseconds(), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()+1), pvl.StringUCI()))
 		}
 
-		if bestScore == scoreCheckmate {
+		if bestScore == scoreCheckmate || bestScore == -scoreCheckmate {
 			break
 		}
-
 	}
 	return bestMove, err
 }
@@ -204,26 +205,24 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 func (e *Engine) negamax(
 	ctx context.Context,
 	b *board.Board,
-	mv *board.Move,
 	pvl *PVLine,
 	depth uint8,
 	alpha, beta int32,
 ) (int32, error) {
+	var err error
 	e.searchedNodes++
 	initialAlpha := alpha
 
 	// check if max depth reached or deadline exceeded
-	if err := ctx.Err(); depth == 0 || err != nil {
-		s := e.evaluate(b, mv)
-		return s, err
+	if err = ctx.Err(); depth == 0 || err != nil {
+		return e.evaluate(b), err
 	}
 
 	// check from TranspositionTable
-	typ, ttMove, ttScore, ttDepth, ok := e.tt.Get(b)
-	if ok && ttDepth == depth {
+	typ, ttMove, ttScore, ttDepth, ok := e.tt.Get(b, e.ply)
+	if ok && ttDepth >= depth {
 		switch typ {
 		case EntryTypeExact:
-			pvl.Set(ttMove, PVLine{})
 			return ttScore, nil
 		case EntryTypeLowerBound:
 			alpha = max(alpha, ttScore)
@@ -231,7 +230,6 @@ func (e *Engine) negamax(
 			beta = min(beta, ttScore)
 		}
 		if alpha >= beta {
-			pvl.Set(ttMove, PVLine{})
 			return ttScore, nil
 		}
 	}
@@ -241,23 +239,22 @@ func (e *Engine) negamax(
 
 	// end early if game has ended
 	if len(mvs) == 0 {
-		var score int32
 		st := b.State()
 		turn := b.Turn()
 		if (turn == board.SideWhite && st == board.StateCheckmateWhite) ||
 			(turn == board.SideBlack && st == board.StateCheckmateBlack) {
-			score = -scoreCheckmate
+			return -scoreCheckmate, nil
 		}
 		if st.IsDraw() {
-			score = 0
+			return 0, nil
 		}
-		return score, nil
 	}
 
 	// assign score to moves
 	e.scoreMoves(b, ttMove, &mvs)
 
 	var bestMove *board.Move
+	var bestChildPVL PVLine
 	bestScore := -Infinity
 	for i := 0; i < len(mvs); i++ {
 		e.sortMoves(&mvs, i)
@@ -266,26 +263,27 @@ func (e *Engine) negamax(
 		bb := b.Clone()
 		bb.Apply(mv)
 
-		childPVL := PVLine{}
-		score, err := e.negamax(ctx, bb, mv, &childPVL, depth-1, -beta, -alpha)
+		var score int32
+		var childPVL PVLine
+		score, err = e.negamax(ctx, bb, &childPVL, depth-1, -beta, -alpha)
 		score = -score // invert score
 
-		if score > bestScore {
+		if score > bestScore || bestMove == nil {
 			bestMove = mv
+			bestChildPVL = childPVL
 			bestScore = score
 		}
-		if bestScore > alpha {
-			alpha = bestScore
-			pvl.Set(mv, childPVL)
+
+		if score > alpha {
+			alpha = score
 		}
 		if alpha >= beta {
 			// set Killer move
-			if depth > 1 && !bestMove.IsCapture {
+			if depth > 0 && !bestMove.IsCapture {
 				ply := b.Ply()
 				if !bestMove.Equals(e.killers[ply][0]) {
 					for i := killerCount - 1; i >= 1; i-- {
-						temp := e.killers[ply][i]
-						e.killers[ply][i] = temp
+						e.killers[ply][i] = e.killers[ply][i-1]
 					}
 					e.killers[ply][0] = bestMove
 				}
@@ -293,22 +291,23 @@ func (e *Engine) negamax(
 			break // cut-off
 		}
 		if err != nil {
-			return bestScore, err
+			break
 		}
 	}
 
 	// set TranspositionTable
 	switch {
 	case bestScore <= initialAlpha:
-		typ = EntryTypeUpperBound
-	case bestScore >= beta:
 		typ = EntryTypeLowerBound
+	case bestScore >= beta:
+		typ = EntryTypeUpperBound
 	default:
 		typ = EntryTypeExact
 	}
-	e.tt.Set(typ, b, bestMove, bestScore, depth)
+	e.tt.Set(typ, b, bestMove, bestScore, depth, e.ply)
 
-	return bestScore, nil
+	pvl.Set(bestMove, bestChildPVL)
+	return bestScore, err
 }
 
 func (e *Engine) TranspositionStats() string {
@@ -341,7 +340,7 @@ func formatScoreDebug(s int32, pvl PVLine) string {
 		return fmt.Sprintf("#+%d", pvl.Len()/2+1)
 	}
 	if s == -scoreCheckmate {
-		return fmt.Sprintf("#-%d", pvl.Len()/2+1)
+		return fmt.Sprintf("#-%d", pvl.Len()/2)
 	}
 	if s > 0 {
 		return fmt.Sprintf("+%.2f", float64(s)/100)
@@ -357,7 +356,7 @@ func formatScoreUCI(s int32, pvl PVLine) string {
 		return fmt.Sprintf("mate %d", pvl.Len()/2+1)
 	}
 	if s == -scoreCheckmate {
-		return fmt.Sprintf("mate -%d", pvl.Len()/2+1)
+		return fmt.Sprintf("mate -%d", pvl.Len()/2)
 	}
 	return fmt.Sprintf("cp %d", s)
 }

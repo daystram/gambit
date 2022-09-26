@@ -113,7 +113,8 @@ type Engine struct {
 	tt      *TranspositionTable
 	killers [MaxDepth][killerCount]*board.Move
 
-	ply           uint8
+	currentPly    uint8
+	currentTurn   board.Side
 	searchedNodes int
 	logger        func(...any)
 }
@@ -164,7 +165,8 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 	var err error
 	var bestMove *board.Move
 	var bestScore int32
-	e.ply = b.Ply()
+	e.currentPly = b.Ply()
+	e.currentTurn = b.Turn()
 
 	// TODO: Null-move heuristic (may not be necessary for now)
 	for d := uint8(1); d < cfg.MaxDepth+1; d++ {
@@ -219,7 +221,7 @@ func (e *Engine) negamax(
 	}
 
 	// check from TranspositionTable
-	typ, ttMove, ttScore, ttDepth, ok := e.tt.Get(b, e.ply)
+	typ, ttMove, ttScore, ttDepth, ok := e.tt.Get(b, e.currentPly)
 	if ok && ttDepth >= depth {
 		switch typ {
 		case EntryTypeExact:
@@ -304,7 +306,7 @@ func (e *Engine) negamax(
 	default:
 		typ = EntryTypeExact
 	}
-	e.tt.Set(typ, b, bestMove, bestScore, depth, e.ply)
+	e.tt.Set(typ, b, bestMove, bestScore, depth, e.currentPly)
 
 	pvl.Set(bestMove, bestChildPVL)
 	return bestScore, err

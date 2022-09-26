@@ -1,9 +1,7 @@
 package board
 
 import (
-	"log"
 	"math/rand"
-	"time"
 
 	"github.com/daystram/gambit/position"
 )
@@ -18,24 +16,24 @@ var (
 	DefaultStartingPositionFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 	maskCol = [Width]bitmap{
-		0x_01_01_01_01_01_01_01_01,
-		0x_02_02_02_02_02_02_02_02,
-		0x_04_04_04_04_04_04_04_04,
-		0x_08_08_08_08_08_08_08_08,
-		0x_10_10_10_10_10_10_10_10,
-		0x_20_20_20_20_20_20_20_20,
-		0x_40_40_40_40_40_40_40_40,
-		0x_80_80_80_80_80_80_80_80,
+		position.FileA: 0x_01_01_01_01_01_01_01_01,
+		position.FileB: 0x_02_02_02_02_02_02_02_02,
+		position.FileC: 0x_04_04_04_04_04_04_04_04,
+		position.FileD: 0x_08_08_08_08_08_08_08_08,
+		position.FileE: 0x_10_10_10_10_10_10_10_10,
+		position.FileF: 0x_20_20_20_20_20_20_20_20,
+		position.FileG: 0x_40_40_40_40_40_40_40_40,
+		position.FileH: 0x_80_80_80_80_80_80_80_80,
 	}
 	maskRow = [Height]bitmap{
-		0x_00_00_00_00_00_00_00_FF,
-		0x_00_00_00_00_00_00_FF_00,
-		0x_00_00_00_00_00_FF_00_00,
-		0x_00_00_00_00_FF_00_00_00,
-		0x_00_00_00_FF_00_00_00_00,
-		0x_00_00_FF_00_00_00_00_00,
-		0x_00_FF_00_00_00_00_00_00,
-		0x_FF_00_00_00_00_00_00_00,
+		position.Rank1: 0x_00_00_00_00_00_00_00_FF,
+		position.Rank2: 0x_00_00_00_00_00_00_FF_00,
+		position.Rank3: 0x_00_00_00_00_00_FF_00_00,
+		position.Rank4: 0x_00_00_00_00_FF_00_00_00,
+		position.Rank5: 0x_00_00_00_FF_00_00_00_00,
+		position.Rank6: 0x_00_00_FF_00_00_00_00_00,
+		position.Rank7: 0x_00_FF_00_00_00_00_00_00,
+		position.Rank8: 0x_FF_00_00_00_00_00_00_00,
 	}
 	maskCell   [TotalCells]bitmap
 	maskDia    [TotalCells]bitmap
@@ -46,19 +44,21 @@ var (
 	maskCastling = [4 + 1]bitmap{}
 	posCastling  = [4 + 1][6 + 1][2]position.Pos{
 		CastleDirectionWhiteRight: {
-			PieceKing: {4, 6},
-			PieceRook: {7, 5},
+			PieceKing: {position.E1, position.G1},
+			PieceRook: {position.H1, position.F1},
 		},
 		CastleDirectionWhiteLeft: {
-			PieceKing: {4, 2},
-			PieceRook: {0, 3}},
+			PieceKing: {position.E1, position.C1},
+			PieceRook: {position.A1, position.D1},
+		},
 		CastleDirectionBlackRight: {
-			PieceKing: {4 + 7*Width, 6 + 7*Width},
-			PieceRook: {7 + 7*Width, 5 + 7*Width},
+			PieceKing: {position.E8, position.G8},
+			PieceRook: {position.H8, position.F8},
 		},
 		CastleDirectionBlackLeft: {
-			PieceKing: {4 + 7*Width, 2 + 7*Width},
-			PieceRook: {0 + 7*Width, 3 + 7*Width}},
+			PieceKing: {position.E8, position.C8},
+			PieceRook: {position.A8, position.D8},
+		},
 	}
 
 	maskCastleRights = [5]CastleRights{
@@ -80,7 +80,7 @@ var (
 
 	materialPieceValue = [6 + 1]uint32{
 		PiecePawn:   100,
-		PieceKnight: 300,
+		PieceKnight: 320,
 		PieceBishop: 350,
 		PieceRook:   500,
 		PieceQueen:  900,
@@ -88,11 +88,9 @@ var (
 )
 
 func init() {
-	start := time.Now()
 	initMask()
 	initZobrist()
 	initMagic()
-	log.Printf("init lookups: %s elapsed\n", time.Since(start))
 }
 
 func initMask() {
@@ -180,7 +178,7 @@ func initMagic() {
 
 	// Rook
 	for pos := position.Pos(0); pos < TotalCells; pos++ {
-		magicRookMask[pos] = (maskRow[pos/8] | maskCol[pos%8]) &^ maskCell[pos]
+		magicRookMask[pos] = (maskRow[pos/Width] | maskCol[pos%Width]) &^ maskCell[pos]
 	}
 
 	// TODO: try using magics

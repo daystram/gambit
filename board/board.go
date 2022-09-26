@@ -376,6 +376,7 @@ func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, l
 
 	// find King attacks
 	if attackersKing := maskKing[pos] & attackerSideMask & b.pieces[PieceKing]; attackersKing != 0 {
+		count++
 		attackBM |= attackersKing
 	}
 

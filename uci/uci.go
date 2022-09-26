@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	EngineName   = "Gambit"
-	EngineAuthor = "Danny August Ramaputra"
+	EngineName    = "Gambit"
+	EngineVersion = "Dev"
+	EngineAuthor  = "Danny August Ramaputra"
 
 	defaultOptions = options{
 		debug:         false,
@@ -50,6 +51,7 @@ func NewInterface() *Interface {
 func (i *Interface) Run() error {
 	ctx := context.Background()
 	i.reset(ctx)
+	i.println(fmt.Sprintf("%s %s", EngineName, EngineVersion))
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -86,7 +88,7 @@ func (i *Interface) Run() error {
 }
 
 func (i *Interface) commandUCI(_ context.Context) {
-	i.println(fmt.Sprintf("id name %s", EngineName))
+	i.println(fmt.Sprintf("id name %s %s", EngineName, EngineVersion))
 	i.println(fmt.Sprintf("id author %s", EngineAuthor))
 	i.println(fmt.Sprintf("option name Debug type check default %v", defaultOptions.debug))
 	i.println(fmt.Sprintf("option name Hash type spin default %d min 0 max 16777216", defaultOptions.hashTableSize))

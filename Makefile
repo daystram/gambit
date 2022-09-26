@@ -1,5 +1,7 @@
+VERSION?=Dev-$(shell git rev-parse --short HEAD)
 GO:=$(shell which go)
 GO_TARGET:=$(shell go list ./...)
+LDFLAGS+="-X 'github.com/daystram/gambit/uci.EngineVersion=${VERSION}'"
 ifeq (${PLATFORM},windows-amd64)
 	GO_GOOS:=windows
 	GO_GOARCH:=amd64
@@ -15,7 +17,7 @@ build:
 	CGO_ENABLED=${GO_CGO_ENABLED} \
 	CXX=${GO_CXX}\
 	CC=${GO_CC} \
-	${GO} build ./cmd/gambit
+	${GO} build -ldflags=${LDFLAGS} ./cmd/gambit
 
 .PHONY: test
 test:

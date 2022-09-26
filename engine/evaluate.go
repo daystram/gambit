@@ -94,6 +94,8 @@ var (
 		},
 	}
 
+	scoreTempoBonus int32 = 30
+
 	offsetPV     uint8 = 255
 	offsetMVVLVA uint8 = offsetPV - 64
 	scoreMVVLVA        = [6 + 1][6 + 1]uint8{
@@ -178,5 +180,11 @@ func (e *Engine) evaluate(b *board.Board) int32 {
 		}
 	}
 
-	return totalScorePiece + totalScorePiecePosition
+	// Tempo bonus to reduce early game oscillation due to leaf parity
+	var totalTempoBonus int32
+	if ourTurn == e.currentTurn {
+		totalTempoBonus = scoreTempoBonus
+	}
+
+	return totalScorePiece + totalScorePiecePosition + totalTempoBonus
 }

@@ -173,6 +173,7 @@ func (i *Interface) commandGo(ctx context.Context, args []string) {
 	cfg := &engine.SearchConfig{
 		MaxDepth: engine.DefaultDepth,
 		Timeout:  engine.DefaultTimeoutDuration,
+		Debug:    i.options.debug,
 	}
 	if len(args) > 0 {
 		switch args[0] {

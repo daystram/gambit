@@ -150,6 +150,7 @@ func (e *Engine) sortMoves(mvs *[]*board.Move, index int) {
 // The score is positive relative to the currently playing side.
 func (e *Engine) evaluate(b *board.Board) int32 {
 	ourTurn := b.Turn()
+	oppTurn := b.Turn().Opposite()
 
 	// TODO: check game state here?
 
@@ -177,6 +178,15 @@ func (e *Engine) evaluate(b *board.Board) int32 {
 		for bm != 0 {
 			if bm&1 == 1 {
 				totalScorePiecePosition += scorePiecePosition[p][scorePiecePositionMap[ourTurn][pos]]
+			}
+			pos++
+			bm >>= 1
+		}
+		pos = 0
+		bm = b.GetBitmap(ourTurn, p)
+		for bm != 0 {
+			if bm&1 == 1 {
+				totalScorePiecePosition -= scorePiecePosition[p][scorePiecePositionMap[oppTurn][pos]]
 			}
 			pos++
 			bm >>= 1

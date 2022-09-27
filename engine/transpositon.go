@@ -16,9 +16,8 @@ const (
 )
 
 type TranspositionTable struct {
-	table    []*entry
-	size     uint64
-	maskHash uint64
+	table []*entry
+	size  uint64
 
 	// stats
 	hits   int
@@ -37,15 +36,14 @@ type entry struct {
 
 func NewTranspositionTable(size uint64) *TranspositionTable {
 	return &TranspositionTable{
-		table:    make([]*entry, size),
-		size:     size,
-		maskHash: size - 1,
+		table: make([]*entry, size),
+		size:  size,
 	}
 }
 
 func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, score int32, depth, age uint8) {
 	hash := b.Hash()
-	index := hash & t.maskHash
+	index := hash % t.size
 	e := t.table[index]
 	if e == nil || e.age != age || e.depth <= depth {
 		t.writes++
@@ -63,7 +61,7 @@ func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, 
 
 func (t *TranspositionTable) Get(b *board.Board, age uint8) (EntryType, *board.Move, int32, uint8, bool) {
 	hash := b.Hash()
-	index := hash & t.maskHash
+	index := hash % t.size
 	e := t.table[index]
 	if e == nil || e.hash != hash || e.age != age {
 		t.misses++

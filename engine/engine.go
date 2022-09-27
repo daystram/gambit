@@ -176,7 +176,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 		var candidateScore int32
 		startTime := time.Now()
-		candidateScore, err = e.negamax(ctx, b, &pvl, d, -Infinity, Infinity)
+		candidateScore, err = e.negamax(ctx, b, bestMove, &pvl, d, -Infinity, Infinity)
 		endTime := time.Now()
 
 		if err != nil {
@@ -207,6 +207,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 func (e *Engine) negamax(
 	ctx context.Context,
 	b *board.Board,
+	lastPV *board.Move,
 	pvl *PVLine,
 	depth uint8,
 	alpha, beta int32,
@@ -253,7 +254,7 @@ func (e *Engine) negamax(
 	}
 
 	// assign score to moves
-	e.scoreMoves(b, ttMove, &mvs)
+	e.scoreMoves(b, lastPV, ttMove, &mvs)
 
 	var bestMove *board.Move
 	var bestChildPVL PVLine
@@ -267,7 +268,7 @@ func (e *Engine) negamax(
 
 		var score int32
 		var childPVL PVLine
-		score, err = e.negamax(ctx, bb, &childPVL, depth-1, -beta, -alpha)
+		score, err = e.negamax(ctx, bb, nil, &childPVL, depth-1, -beta, -alpha)
 		score = -score // invert score
 
 		if score > bestScore || bestMove == nil {

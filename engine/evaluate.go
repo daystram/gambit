@@ -94,7 +94,7 @@ var (
 		},
 	}
 
-	scoreTempoBonus int32 = 30
+	scoreTempoBonus int32 = 25
 
 	offsetPV     uint8 = 255
 	offsetMVVLVA uint8 = offsetPV - 64
@@ -164,7 +164,8 @@ func (e *Engine) evaluate(b *board.Board) int32 {
 
 	// PST heuristic
 	var totalScorePiecePosition int32
-	for _, p := range []board.Piece{board.PiecePawn,
+	for _, p := range []board.Piece{
+		board.PiecePawn,
 		board.PieceKnight,
 		board.PieceBishop,
 		board.PieceRook,
@@ -175,7 +176,7 @@ func (e *Engine) evaluate(b *board.Board) int32 {
 		bm := b.GetBitmap(ourTurn, p)
 		for bm != 0 {
 			if bm&1 == 1 {
-				totalScorePiecePosition += scorePiecePosition[p][scorePiecePositionMap[ourTurn][p]]
+				totalScorePiecePosition += scorePiecePosition[p][scorePiecePositionMap[ourTurn][pos]]
 			}
 			pos++
 			bm >>= 1

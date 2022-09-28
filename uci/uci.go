@@ -168,7 +168,8 @@ func (i *Interface) commandPosition(_ context.Context, args []string) {
 
 func (i *Interface) commandDraw(_ context.Context) {
 	i.println(i.board.Draw())
-	i.println(i.board.FEN())
+	i.println("FEN :", i.board.FEN())
+	i.println("Hash:", i.board.Hash())
 }
 
 func (i *Interface) commandGo(ctx context.Context, args []string) {

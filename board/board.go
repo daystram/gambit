@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/bits"
-	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/daystram/gambit/position"
 )
@@ -80,203 +78,60 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	}, turn, nil
 }
 
-func parseFEN(fen string) (sideBitmaps, pieceBitmaps, cellList, sideMaterials, CastleRights, bitmap, uint8, uint8, Side, error) {
-	segments := strings.Split(fen, " ")
-	if len(segments) != 6 {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: incorrect number of segments", ErrInvalidFEN)
+func (b *Board) IsLegal(mv *Move) bool {
+	var c int
+	ourSide, oppSide := b.turn, b.turn.Opposite()
+
+	// check if move leaves our King in check
+	bb := b.Clone()
+	bb.Apply(mv)
+	if c, _ = bb.GetCellAttackers(oppSide, bb.GetBitmap(ourSide, PieceKing).LS1B(), 1); c != 0 {
+		return false
 	}
 
-	var sides sideBitmaps
-	var pieces pieceBitmaps
-	var cells cellList
-	var materials sideMaterials
-	rows := strings.Split(segments[0], "/")
-	if len(rows) != int(Height) {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid board configuration", ErrInvalidFEN)
-	}
-	for y := position.Pos(0); y < Height; y++ {
-		ptrX, ptrY := -1, Height-y-1
-		for x := position.Pos(0); x < Width; x++ {
-			ptrX++
-			if ptrX >= len(rows[ptrY]) {
-				return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: missing cells", ErrInvalidFEN)
-			}
-			var s Side
-			var p Piece
-			switch cell := rune(rows[ptrY][ptrX]); cell {
-			case 'P':
-				s, p = SideWhite, PiecePawn
-			case 'B':
-				s, p = SideWhite, PieceBishop
-			case 'N':
-				s, p = SideWhite, PieceKnight
-			case 'R':
-				s, p = SideWhite, PieceRook
-			case 'Q':
-				s, p = SideWhite, PieceQueen
-			case 'K':
-				s, p = SideWhite, PieceKing
-			case 'p':
-				s, p = SideBlack, PiecePawn
-			case 'b':
-				s, p = SideBlack, PieceBishop
-			case 'n':
-				s, p = SideBlack, PieceKnight
-			case 'r':
-				s, p = SideBlack, PieceRook
-			case 'q':
-				s, p = SideBlack, PieceQueen
-			case 'k':
-				s, p = SideBlack, PieceKing
-			default:
-				if cell != '0' && unicode.IsDigit(cell) {
-					skip := position.Pos(cell - '0')
-					if skip != 0 && x+skip-1 < Width {
-						x += skip - 1
-						continue
-					}
-					return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: skip out of bounds", ErrInvalidFEN)
-				}
-				return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: unknown symbol '%s'", ErrInvalidFEN, string(cell))
-			}
-			pos := y*Width + x
-			sides[s] = Set(sides[s], pos, true)
-			pieces[p] = Set(pieces[p], pos, true)
-			cells[pos] = uint8(s)<<4 + uint8(p)
-			materials[s] += materialPieceValue[p]
+	// check if cells between castling is attacked
+	switch mv.IsCastle {
+	case CastleDirectionWhiteLeft:
+		if c, _ = b.GetCellAttackers(oppSide, position.C1, 1); c != 0 {
+			return false
+		}
+		if c, _ = b.GetCellAttackers(oppSide, position.D1, 1); c != 0 {
+			return false
+		}
+	case CastleDirectionWhiteRight:
+		if c, _ = b.GetCellAttackers(oppSide, position.F1, 1); c != 0 {
+			return false
+		}
+		if c, _ = b.GetCellAttackers(oppSide, position.G1, 1); c != 0 {
+			return false
+		}
+	case CastleDirectionBlackLeft:
+		if c, _ = b.GetCellAttackers(oppSide, position.C8, 1); c != 0 {
+			return false
+		}
+		if c, _ = b.GetCellAttackers(oppSide, position.D8, 1); c != 0 {
+			return false
+		}
+	case CastleDirectionBlackRight:
+		if c, _ = b.GetCellAttackers(oppSide, position.F8, 1); c != 0 {
+			return false
+		}
+		if c, _ = b.GetCellAttackers(oppSide, position.G8, 1); c != 0 {
+			return false
 		}
 	}
 
-	var turn Side
-	switch segments[1] {
-	case "w":
-		turn = SideWhite
-	case "b":
-		turn = SideBlack
-	default:
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid turn", ErrInvalidFEN)
-	}
-
-	var castleRights CastleRights
-	if len(segments[2]) > 4 {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
-	}
-crLoop:
-	for i, e := range segments[2] {
-		switch e {
-		case 'K':
-			castleRights.Set(CastleDirectionWhiteRight, true)
-		case 'k':
-			castleRights.Set(CastleDirectionBlackRight, true)
-		case 'Q':
-			castleRights.Set(CastleDirectionWhiteLeft, true)
-		case 'q':
-			castleRights.Set(CastleDirectionBlackLeft, true)
-		default:
-			if i == 0 && e == '-' {
-				break crLoop
-			}
-			return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
-		}
-	}
-
-	var enPassant bitmap
-	if segments[3] != "-" {
-		pos, err := position.NewPosFromNotation(segments[3])
-		if err != nil {
-			return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
-		}
-		enPassant = maskCell[pos]
-		if enPassant&(maskRow[2]|maskRow[5]) == 0 {
-			return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
-		}
-	}
-
-	halfMoveClock, err := strconv.ParseUint(segments[4], 10, 8)
-	if err != nil {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid half move clock", ErrInvalidFEN)
-	}
-
-	fullMoveClock, err := strconv.ParseUint(segments[5], 10, 8)
-	if err != nil {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideMaterials{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, fmt.Errorf("%w: invalid full move clock", ErrInvalidFEN)
-	}
-
-	return sides, pieces, cells, materials, castleRights, enPassant, uint8(halfMoveClock), uint8(fullMoveClock), turn, nil
+	return true
 }
 
-func (b *Board) FEN() string {
-	builder := strings.Builder{}
-	var skip uint8
-	for y := position.Pos(Height) - 1; y >= 0; y-- {
-		for x := position.Pos(0); x < Width; x++ {
-			for skip = 0; x < Width && maskCell[y*Width+x]&b.occupied == 0; x++ {
-				skip++
-			}
-			if skip != 0 {
-				_, _ = builder.WriteRune(rune(skip + '0'))
-			}
-			if x < Width {
-				for p, pBM := range b.pieces[1:] {
-					if maskCell[y*Width+x]&pBM != 0 {
-						s := SideWhite
-						if maskCell[y*Width+x]&b.sides[SideBlack] != 0 {
-							s = SideBlack
-						}
-						_, _ = builder.WriteString(Piece(p + 1).SymbolFEN(s))
-						break
-					}
-				}
-			}
-		}
-		if y > 0 {
-			_, _ = builder.WriteRune('/')
-		}
-	}
-
-	if b.turn == SideWhite {
-		_, _ = builder.WriteString(" w ")
-	} else {
-		_, _ = builder.WriteString(" b ")
-	}
-
-	if b.castleRights == 0 {
-		_, _ = builder.WriteRune('-')
-	} else {
-		if b.castleRights.IsAllowed(CastleDirectionWhiteRight) {
-			_, _ = builder.WriteRune('K')
-		}
-		if b.castleRights.IsAllowed(CastleDirectionWhiteLeft) {
-			_, _ = builder.WriteRune('Q')
-		}
-		if b.castleRights.IsAllowed(CastleDirectionBlackRight) {
-			_, _ = builder.WriteRune('k')
-		}
-		if b.castleRights.IsAllowed(CastleDirectionBlackLeft) {
-			_, _ = builder.WriteRune('q')
-		}
-	}
-	_, _ = builder.WriteRune(' ')
-
-	if b.enPassant == 0 {
-		_, _ = builder.WriteRune('-')
-	} else {
-		_, _ = builder.WriteString(b.enPassant.LS1B().Notation())
-	}
-
-	_, _ = builder.WriteString(fmt.Sprintf(" %d %d", b.halfMoveClock, b.fullMoveClock))
-
-	return builder.String()
-}
-
-func (b *Board) GenerateMoves() []*Move {
+func (b *Board) GeneratePseudoLegalMoves() []*Move {
 	mvs := make([]*Move, 0, 64)
 	opponentSide := b.turn.Opposite()
 	sideMask := b.sides[b.turn]
 	nonSelfMask := ^sideMask
 
 	kingPos := b.GetBitmap(b.turn, PieceKing).LS1B()
-	checkerCount, attackedMask := b.GetCellAttackers(opponentSide, kingPos, 0, 2)
+	checkerCount, attackedMask := b.GetCellAttackers(opponentSide, kingPos, 2)
 
 	if checkerCount == 2 {
 		b.generateMoveKing(&mvs, kingPos, (^attackedMask|b.sides[opponentSide])&nonSelfMask)
@@ -290,10 +145,7 @@ func (b *Board) GenerateMoves() []*Move {
 		b.generateMoveRook(&mvs, sideMask&b.pieces[PieceRook], attackedMask)
 		b.generateMoveQueen(&mvs, sideMask&b.pieces[PieceQueen], attackedMask)
 		b.generateMoveKing(&mvs, kingPos, (^attackedMask|b.sides[opponentSide])&nonSelfMask)
-
-		// TODO: try strictly legal generator and remove this
-		i := b.filterInvalidMoves(&mvs)
-		return mvs[:i]
+		return mvs
 	}
 
 	b.generateMovePawn(&mvs, sideMask&b.pieces[PiecePawn], nonSelfMask)
@@ -303,20 +155,17 @@ func (b *Board) GenerateMoves() []*Move {
 	b.generateMoveQueen(&mvs, sideMask&b.pieces[PieceQueen], nonSelfMask)
 	b.generateMoveKing(&mvs, kingPos, nonSelfMask)
 	b.generateCastling(&mvs)
-
-	// TODO: try strictly legal generator and remove this
-	i := b.filterInvalidMoves(&mvs)
-	return mvs[:i]
+	return mvs
 }
 
-func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, limit int) (int, bitmap) {
+func (b *Board) GetCellAttackers(attackerSide Side, pos position.Pos, limit int) (int, bitmap) {
 	var count int
 	var attackBM bitmap
 	attackerSideMask := b.sides[attackerSide]
 	posMask := maskCell[pos]
 
 	// find lateral attacker pieces
-	candidateRay := HitLaterals(pos, magicRookMask[pos]&(b.occupied&^maskCell[xrayPos]))
+	candidateRay := HitLaterals(pos, magicRookMask[pos]&(b.occupied))
 	attackerLaterals := candidateRay & attackerSideMask & (b.pieces[PieceRook] | b.pieces[PieceQueen])
 	countLateral := bits.OnesCount64(uint64(attackerLaterals))
 	count += countLateral
@@ -326,7 +175,7 @@ func (b *Board) GetCellAttackers(attackerSide Side, pos, xrayPos position.Pos, l
 	}
 
 	// find diagonal attacker pieces
-	candidateRay = HitDiagonals(pos, magicBishopMask[pos]&(b.occupied&^maskCell[xrayPos]))
+	candidateRay = HitDiagonals(pos, magicBishopMask[pos]&(b.occupied))
 	attackerDiagonals := candidateRay & attackerSideMask & (b.pieces[PieceBishop] | b.pieces[PieceQueen])
 	countDiagonal := bits.OnesCount64(uint64(attackerDiagonals))
 	count += countDiagonal
@@ -546,17 +395,11 @@ func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) 
 
 func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMask bitmap) {
 	candidateToBM := maskKing[fromPos] & allowedToMask
-	oppTurn := b.turn.Opposite()
 
 	for candidateToBM != 0 {
 		toPos := position.Pos(bits.TrailingZeros64(uint64(candidateToBM)))
 		toCell := maskCell[toPos] & candidateToBM
 		candidateToBM &= candidateToBM - 1
-
-		attackerCount, _ := b.GetCellAttackers(oppTurn, toPos, fromPos, 1)
-		if attackerCount != 0 {
-			continue
-		}
 
 		isCapture := toCell&b.occupied != 0
 		*mvs = append(*mvs, &Move{
@@ -570,88 +413,55 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 }
 
 func (b *Board) generateCastling(mvs *[]*Move) {
-	opponentSide := b.turn.Opposite()
 	if b.castleRights.IsSideAllowed(b.turn) {
 		if b.turn == SideWhite {
 			if b.castleRights.IsAllowed(CastleDirectionWhiteLeft) &&
 				b.occupied&maskCastling[CastleDirectionWhiteLeft] == 0 {
-				attackerB1, _ := b.GetCellAttackers(opponentSide, 1, 0, 1)
-				attackerC1, _ := b.GetCellAttackers(opponentSide, 2, 0, 1)
-				attackerD1, _ := b.GetCellAttackers(opponentSide, 3, 0, 1)
-				if attackerB1+attackerC1+attackerD1 == 0 {
-					jump := posCastling[CastleDirectionWhiteLeft][PieceKing]
-					*mvs = append(*mvs, &Move{
-						From:     jump[0],
-						To:       jump[1],
-						Piece:    PieceKing,
-						IsTurn:   b.turn,
-						IsCastle: CastleDirectionWhiteLeft,
-					})
-				}
+				jump := posCastling[CastleDirectionWhiteLeft][PieceKing]
+				*mvs = append(*mvs, &Move{
+					From:     jump[0],
+					To:       jump[1],
+					Piece:    PieceKing,
+					IsTurn:   b.turn,
+					IsCastle: CastleDirectionWhiteLeft,
+				})
 			}
 			if b.castleRights.IsAllowed(CastleDirectionWhiteRight) &&
 				b.occupied&maskCastling[CastleDirectionWhiteRight] == 0 {
-				attackerF1, _ := b.GetCellAttackers(opponentSide, 5, 0, 1)
-				attackerG1, _ := b.GetCellAttackers(opponentSide, 6, 0, 1)
-				if attackerF1+attackerG1 == 0 {
-					jump := posCastling[CastleDirectionWhiteRight][PieceKing]
-					*mvs = append(*mvs, &Move{
-						From:     jump[0],
-						To:       jump[1],
-						Piece:    PieceKing,
-						IsTurn:   b.turn,
-						IsCastle: CastleDirectionWhiteRight,
-					})
-				}
+				jump := posCastling[CastleDirectionWhiteRight][PieceKing]
+				*mvs = append(*mvs, &Move{
+					From:     jump[0],
+					To:       jump[1],
+					Piece:    PieceKing,
+					IsTurn:   b.turn,
+					IsCastle: CastleDirectionWhiteRight,
+				})
 			}
 		} else {
 			if b.castleRights.IsAllowed(CastleDirectionBlackLeft) &&
 				b.occupied&maskCastling[CastleDirectionBlackLeft] == 0 {
-				attackerB1, _ := b.GetCellAttackers(opponentSide, 57, 0, 1)
-				attackerC1, _ := b.GetCellAttackers(opponentSide, 58, 0, 1)
-				attackerD1, _ := b.GetCellAttackers(opponentSide, 59, 0, 1)
-				if attackerB1+attackerC1+attackerD1 == 0 {
-					jump := posCastling[CastleDirectionBlackLeft][PieceKing]
-					*mvs = append(*mvs, &Move{
-						From:     jump[0],
-						To:       jump[1],
-						Piece:    PieceKing,
-						IsTurn:   b.turn,
-						IsCastle: CastleDirectionBlackLeft,
-					})
-				}
+				jump := posCastling[CastleDirectionBlackLeft][PieceKing]
+				*mvs = append(*mvs, &Move{
+					From:     jump[0],
+					To:       jump[1],
+					Piece:    PieceKing,
+					IsTurn:   b.turn,
+					IsCastle: CastleDirectionBlackLeft,
+				})
 			}
 			if b.castleRights.IsAllowed(CastleDirectionBlackRight) &&
 				b.occupied&maskCastling[CastleDirectionBlackRight] == 0 {
-				attackerF8, _ := b.GetCellAttackers(opponentSide, 61, 0, 1)
-				attackerG8, _ := b.GetCellAttackers(opponentSide, 62, 0, 1)
-				if attackerF8+attackerG8 == 0 {
-					jump := posCastling[CastleDirectionBlackLeft][PieceKing]
-					*mvs = append(*mvs, &Move{
-						From:     jump[0],
-						To:       jump[1],
-						Piece:    PieceKing,
-						IsTurn:   b.turn,
-						IsCastle: CastleDirectionBlackRight,
-					})
-				}
+				jump := posCastling[CastleDirectionBlackLeft][PieceKing]
+				*mvs = append(*mvs, &Move{
+					From:     jump[0],
+					To:       jump[1],
+					Piece:    PieceKing,
+					IsTurn:   b.turn,
+					IsCastle: CastleDirectionBlackRight,
+				})
 			}
 		}
 	}
-}
-
-func (b *Board) filterInvalidMoves(mvs *[]*Move) int {
-	ourSide, opponentSide := b.turn, b.turn.Opposite()
-	i := 0
-	for _, mv := range *mvs {
-		bb := b.Clone()
-		bb.Apply(mv)
-		if c, _ := bb.GetCellAttackers(opponentSide, bb.GetBitmap(ourSide, PieceKing).LS1B(), 0, 10); c == 0 {
-			(*mvs)[i] = mv
-			i++
-		}
-	}
-	return i
 }
 
 func (b *Board) flip(s Side, p Piece, pos position.Pos) {
@@ -912,9 +722,14 @@ func (b *Board) State() State {
 		return b.state
 	}
 
-	mvs := b.GenerateMoves()
-	if c, _ := b.GetCellAttackers(b.turn.Opposite(), b.GetBitmap(b.turn, PieceKing).LS1B(), 0, 1); c != 0 {
-		if len(mvs) == 0 {
+	var legalMoves int
+	for _, mv := range b.GeneratePseudoLegalMoves() {
+		if b.IsLegal(mv) {
+			legalMoves++
+		}
+	}
+	if c, _ := b.GetCellAttackers(b.turn.Opposite(), b.GetBitmap(b.turn, PieceKing).LS1B(), 1); c != 0 {
+		if legalMoves == 0 {
 			if b.turn == SideWhite {
 				return StateCheckmateWhite
 			}
@@ -925,7 +740,7 @@ func (b *Board) State() State {
 		}
 		return StateCheckBlack
 	}
-	if len(mvs) == 0 {
+	if legalMoves == 0 {
 		return StateStalemate
 	}
 
@@ -933,6 +748,7 @@ func (b *Board) State() State {
 	if b.halfMoveClock >= 100 {
 		return StateFiftyMoveViolated
 	}
+
 	return StateRunning
 }
 

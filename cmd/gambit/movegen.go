@@ -18,9 +18,9 @@ func movegen(fen string) error {
 	fmt.Println(b.Dump())
 	fmt.Println(b.Draw())
 	fmt.Println(b.State())
-	dumpMoves(b.GenerateMoves())
+	dumpMoves(b.GeneratePseudoLegalMoves())
 
-	for _, mv := range b.GenerateMoves() {
+	for _, mv := range b.GeneratePseudoLegalMoves() {
 		bb := b.Clone()
 		bb.Apply(mv)
 		fmt.Println(mv)

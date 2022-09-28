@@ -153,10 +153,10 @@ func initMask() {
 	}
 
 	maskCastling = [5]bitmap{
-		CastleDirectionWhiteRight: maskRow[0] & (maskCol[5] | maskCol[6]),
-		CastleDirectionWhiteLeft:  maskRow[0] & (maskCol[1] | maskCol[2] | maskCol[3]),
-		CastleDirectionBlackRight: maskRow[7] & (maskCol[5] | maskCol[6]),
-		CastleDirectionBlackLeft:  maskRow[7] & (maskCol[1] | maskCol[2] | maskCol[3]),
+		CastleDirectionWhiteRight: maskCell[position.F1] | maskCell[position.G1],
+		CastleDirectionWhiteLeft:  maskCell[position.B1] | maskCell[position.C1] | maskCell[position.D1],
+		CastleDirectionBlackRight: maskCell[position.F8] | maskCell[position.G8],
+		CastleDirectionBlackLeft:  maskCell[position.B8] | maskCell[position.C8] | maskCell[position.D8],
 	}
 }
 

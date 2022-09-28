@@ -48,17 +48,24 @@ func runPerft(b *board.Board, d int, root, verbose bool, out chan string, nodes,
 	}
 
 	var sum uint64
-	for _, mv := range b.GenerateMoves() {
+	for _, mv := range b.GeneratePseudoLegalMoves() {
+		if !b.IsLegal(mv) {
+			continue
+		}
+
 		var child uint64
 		bb := b.Clone()
 		bb.Apply(mv)
+
 		if d != 2 {
 			child = runPerft(bb, d-1, false, verbose, out, nodes, cap, enp, cas, pro, chk)
 		} else {
-			leafMoves := bb.GenerateMoves()
-			child = uint64(len(leafMoves))
-			*nodes += child
-			for _, leaf := range leafMoves {
+			for _, leaf := range bb.GeneratePseudoLegalMoves() {
+				if !bb.IsLegal(leaf) {
+					continue
+				}
+				child++
+				*nodes++
 				if leaf.IsCapture {
 					*cap++
 				}
@@ -92,7 +99,10 @@ func runPerftParallel(b *board.Board, d int, root, verbose bool, out chan string
 
 	var sum uint64
 	var wg sync.WaitGroup
-	for _, mv := range b.GenerateMoves() {
+	for _, mv := range b.GeneratePseudoLegalMoves() {
+		if !b.IsLegal(mv) {
+			continue
+		}
 		mv := mv
 		wg.Add(1)
 		go func() {
@@ -103,10 +113,11 @@ func runPerftParallel(b *board.Board, d int, root, verbose bool, out chan string
 			if d != 2 {
 				child = runPerftParallel(bb, d-1, false, verbose, out, nodes, cap, enp, cas, pro, chk)
 			} else {
-				leafMoves := bb.GenerateMoves()
-				child = uint64(len(leafMoves))
-				atomic.AddUint64(nodes, child)
-				for _, leaf := range leafMoves {
+				for _, leaf := range bb.GeneratePseudoLegalMoves() {
+					if !bb.IsLegal(leaf) {
+						continue
+					}
+					child++
 					if leaf.IsCapture {
 						atomic.AddUint64(cap, 1)
 					}
@@ -123,6 +134,7 @@ func runPerftParallel(b *board.Board, d int, root, verbose bool, out chan string
 						atomic.AddUint64(chk, 1)
 					}
 				}
+				atomic.AddUint64(nodes, child)
 			}
 			if verbose && root {
 				out <- fmt.Sprintf("%s: %d", mv.UCI(), child)

@@ -21,7 +21,7 @@ func step() error {
 stepLoop:
 	for step := 0; step < 5000; step++ {
 		t1 := time.Now()
-		mvs := b.GenerateMoves()
+		mvs := b.GeneratePseudoLegalMoves()
 		t2 := time.Now()
 		timesGenerateMoves = append(timesGenerateMoves, t2.Sub(t1))
 		if len(mvs) == 0 {

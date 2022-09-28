@@ -238,7 +238,7 @@ func (e *Engine) negamax(
 	}
 
 	// generate next moves
-	mvs := b.GenerateMoves()
+	mvs := b.GeneratePseudoLegalMoves()
 
 	// end early if game has ended
 	if len(mvs) == 0 {
@@ -262,6 +262,9 @@ func (e *Engine) negamax(
 	for i := 0; i < len(mvs); i++ {
 		e.sortMoves(&mvs, i)
 		mv := mvs[i]
+		if !b.IsLegal(mv) {
+			continue
+		}
 
 		bb := b.Clone()
 		bb.Apply(mv)

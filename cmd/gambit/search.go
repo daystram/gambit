@@ -34,7 +34,7 @@ func search(steps int) error {
 			fmt.Println(e.TranspositionStats())
 			return mv
 		} else {
-			mvs := b.GenerateMoves()
+			mvs := b.GeneratePseudoLegalMoves()
 			return mvs[rand.Intn(len(mvs))]
 		}
 	}

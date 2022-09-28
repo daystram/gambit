@@ -68,8 +68,10 @@ var (
 		CastleDirectionBlackLeft:  0b0001,
 	}
 
-	zobristConstantGrid      [2 + 1][6 + 1][64]uint64
-	zobristConstantSideWhite uint64
+	zobristConstantPiece        [2 + 1][6 + 1][64]uint64
+	zobristConstantEnPassant    [64]uint64
+	zobristConstantCastleRights [16]uint64
+	zobristConstantSideWhite    uint64
 
 	// magicBishopAttacks [TotalCells][1]bitmap
 	magicBishopMask [TotalCells]bitmap
@@ -163,9 +165,15 @@ func initZobrist() {
 	for _, s := range []Side{SideWhite, SideBlack} {
 		for _, p := range []Piece{PiecePawn, PieceBishop, PieceKnight, PieceRook, PieceQueen, PieceKing} {
 			for pos := position.Pos(0); pos < TotalCells; pos++ {
-				zobristConstantGrid[s][p][pos] = r.Uint64()
+				zobristConstantPiece[s][p][pos] = r.Uint64()
 			}
 		}
+	}
+	for pos := position.Pos(0); pos < TotalCells; pos++ {
+		zobristConstantEnPassant[pos] = r.Uint64()
+	}
+	for pos := position.Pos(0); pos < 16; pos++ {
+		zobristConstantCastleRights[pos] = r.Uint64()
 	}
 	zobristConstantSideWhite = r.Uint64()
 }

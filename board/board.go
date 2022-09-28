@@ -658,7 +658,7 @@ func (b *Board) flip(s Side, p Piece, pos position.Pos) {
 	b.sides[s] ^= maskCell[pos]
 	b.pieces[p] ^= maskCell[pos]
 	b.occupied ^= maskCell[pos]
-	b.hash ^= zobristConstantGrid[s][p][pos]
+	b.hash ^= zobristConstantPiece[s][p][pos]
 }
 
 func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
@@ -711,6 +711,9 @@ func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
 func (b *Board) Apply(mv *Move) {
 	ourTurn := b.turn
 	oppTurn := ourTurn.Opposite()
+	_, capturedPiece := b.GetSideAndPieces(mv.To)
+	capturedPos := mv.To
+
 	if mv.IsCastle != CastleDirectionUnknown {
 		// perform castling
 		hopsKing := posCastling[mv.IsCastle][PieceKing]
@@ -733,38 +736,15 @@ func (b *Board) Apply(mv *Move) {
 
 		// remove captured piece at mv.To
 		if mv.IsCapture {
-			var capturedPiece Piece
-			var targetPos position.Pos
 			if mv.IsEnPassant {
 				capturedPiece = PiecePawn
-				targetPos = mv.To - Width // pos of opponent Pawn to remove by enPassant
+				capturedPos = mv.To - Width // pos of opponent Pawn to remove by enPassant
 				if ourTurn == SideBlack {
-					targetPos = mv.To + Width
-				}
-			} else {
-				_, capturedPiece = b.GetSideAndPieces(mv.To)
-				targetPos = mv.To
-				// remove castling rights when Rook is captured
-				if capturedPiece == PieceRook {
-					if ourTurn == SideWhite {
-						if targetPos == 7 {
-							b.castleRights.Set(CastleDirectionWhiteRight, false)
-						}
-						if targetPos == 0 {
-							b.castleRights.Set(CastleDirectionWhiteLeft, false)
-						}
-					} else {
-						if targetPos == 63 {
-							b.castleRights.Set(CastleDirectionBlackRight, false)
-						}
-						if targetPos == 56 {
-							b.castleRights.Set(CastleDirectionBlackLeft, false)
-						}
-					}
+					capturedPos = mv.To + Width
 				}
 			}
-			b.flip(oppTurn, capturedPiece, targetPos)
-			b.cells[targetPos] = 0
+			b.flip(oppTurn, capturedPiece, capturedPos)
+			b.cells[capturedPos] = 0
 			b.materials[oppTurn] -= materialPieceValue[capturedPiece]
 		}
 
@@ -778,7 +758,8 @@ func (b *Board) Apply(mv *Move) {
 		b.materials[ourTurn] += materialPieceValue[movingPiece]
 	}
 
-	// update enPassantPos
+	// update enPassant
+	b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
 	b.enPassant = bitmap(0)
 	if mv.Piece == PiecePawn {
 		if ourTurn == SideWhite && maskCell[mv.From]&maskRow[1] != 0 && maskCell[mv.To]&maskRow[3] != 0 {
@@ -787,10 +768,10 @@ func (b *Board) Apply(mv *Move) {
 			b.enPassant = maskCell[mv.To+Width]
 		}
 	}
-	b.hash ^= uint64(b.enPassant)
+	b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
 
-	// update castlingRights
-	// TODO: hash castlingRights
+	// update castleRights
+	b.hash ^= zobristConstantCastleRights[b.castleRights]
 	if mv.Piece == PieceKing {
 		if ourTurn == SideWhite {
 			b.castleRights.Set(CastleDirectionWhiteRight, false)
@@ -815,8 +796,26 @@ func (b *Board) Apply(mv *Move) {
 				b.castleRights.Set(CastleDirectionBlackLeft, false)
 			}
 		}
-
 	}
+	// remove castling rights when Rook is captured
+	if capturedPiece == PieceRook {
+		if ourTurn == SideWhite {
+			if capturedPos == 7 {
+				b.castleRights.Set(CastleDirectionWhiteRight, false)
+			}
+			if capturedPos == 0 {
+				b.castleRights.Set(CastleDirectionWhiteLeft, false)
+			}
+		} else {
+			if capturedPos == 63 {
+				b.castleRights.Set(CastleDirectionBlackRight, false)
+			}
+			if capturedPos == 56 {
+				b.castleRights.Set(CastleDirectionBlackLeft, false)
+			}
+		}
+	}
+	b.hash ^= zobristConstantCastleRights[b.castleRights]
 
 	// update half move clock
 	if mv.Piece == PiecePawn || mv.IsCapture {
@@ -836,6 +835,9 @@ func (b *Board) Apply(mv *Move) {
 	// set update turn
 	b.turn = oppTurn
 	b.hash ^= zobristConstantSideWhite
+
+	// reset state cache
+	b.state = StateUnknown
 }
 
 func (b *Board) GetBitmap(s Side, p Piece) bitmap {

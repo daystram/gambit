@@ -170,9 +170,13 @@ func (i *Interface) commandDraw(_ context.Context) {
 	i.println(i.board.Draw())
 	i.println("FEN :", i.board.FEN())
 	i.println("Hash:", i.board.Hash())
+	i.println("Stat:", i.board.State())
 }
 
 func (i *Interface) commandGo(ctx context.Context, args []string) {
+	if i.engineRunning {
+		return
+	}
 	cfg := &engine.SearchConfig{
 		MaxDepth: engine.DefaultDepth,
 		Timeout:  engine.DefaultTimeoutDuration,

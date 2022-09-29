@@ -176,7 +176,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 		var candidateScore int32
 		startTime := time.Now()
-		candidateScore, err = e.negamax(ctx, b, bestMove, &pvl, d, -Infinity, Infinity)
+		candidateScore, err = e.negamax(ctx, b, bestMove, &pvl, d, -Infinity, Infinity, true)
 		endTime := time.Now()
 
 		if err != nil {
@@ -211,6 +211,7 @@ func (e *Engine) negamax(
 	pvl *PVLine,
 	depth uint8,
 	alpha, beta int32,
+	isRoot bool,
 ) (int32, error) {
 	var err error
 	e.searchedNodes++
@@ -223,7 +224,7 @@ func (e *Engine) negamax(
 
 	// check from TranspositionTable
 	typ, ttMove, ttScore, ttDepth, ok := e.tt.Get(b, e.currentPly)
-	if ok && ttDepth >= depth {
+	if !isRoot && !ok && ttDepth >= depth {
 		switch typ {
 		case EntryTypeExact:
 			return ttScore, nil
@@ -260,7 +261,7 @@ func (e *Engine) negamax(
 
 		var score int32
 		var childPVL PVLine
-		score, err = e.negamax(ctx, bb, nil, &childPVL, depth-1, -beta, -alpha)
+		score, err = e.negamax(ctx, bb, nil, &childPVL, depth-1, -beta, -alpha, false)
 		score = -score // invert score
 
 		if score > bestScore || bestMove == nil {
@@ -268,11 +269,7 @@ func (e *Engine) negamax(
 			bestChildPVL = childPVL
 			bestScore = score
 		}
-
-		if score > alpha {
-			alpha = score
-		}
-		if alpha >= beta {
+		if score >= beta {
 			// set Killer move
 			if depth > 0 && !bestMove.IsCapture {
 				ply := b.Ply()
@@ -283,8 +280,12 @@ func (e *Engine) negamax(
 					e.killers[ply][0] = bestMove
 				}
 			}
-			break // cut-off
+			break // fail-hard cutoff
 		}
+		if score > alpha {
+			alpha = score
+		}
+
 		if err != nil {
 			break
 		}

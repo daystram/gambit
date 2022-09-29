@@ -94,7 +94,7 @@ var (
 		},
 	}
 
-	scoreTempoBonus int32 = 25
+	scoreTempoBonus int32 = 180
 
 	offsetPV     uint8 = 255
 	offsetMVVLVA uint8 = offsetPV - 64

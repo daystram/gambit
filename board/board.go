@@ -451,7 +451,7 @@ func (b *Board) generateCastling(mvs *[]*Move) {
 			}
 			if b.castleRights.IsAllowed(CastleDirectionBlackRight) &&
 				b.occupied&maskCastling[CastleDirectionBlackRight] == 0 {
-				jump := posCastling[CastleDirectionBlackLeft][PieceKing]
+				jump := posCastling[CastleDirectionBlackRight][PieceKing]
 				*mvs = append(*mvs, &Move{
 					From:     jump[0],
 					To:       jump[1],

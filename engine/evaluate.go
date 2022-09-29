@@ -183,7 +183,7 @@ func (e *Engine) evaluate(b *board.Board) int32 {
 			bm >>= 1
 		}
 		pos = 0
-		bm = b.GetBitmap(ourTurn, p)
+		bm = b.GetBitmap(oppTurn, p)
 		for bm != 0 {
 			if bm&1 == 1 {
 				totalScorePiecePosition -= scorePiecePosition[p][scorePiecePositionMap[oppTurn][pos]]

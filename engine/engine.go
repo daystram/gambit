@@ -240,22 +240,10 @@ func (e *Engine) negamax(
 	// generate next moves
 	mvs := b.GeneratePseudoLegalMoves()
 
-	// end early if game has ended
-	if len(mvs) == 0 {
-		st := b.State()
-		turn := b.Turn()
-		if (turn == board.SideWhite && st == board.StateCheckmateWhite) ||
-			(turn == board.SideBlack && st == board.StateCheckmateBlack) {
-			return -scoreCheckmate, nil
-		}
-		if st.IsDraw() {
-			return 0, nil
-		}
-	}
-
 	// assign score to moves
 	e.scoreMoves(b, lastPV, ttMove, &mvs)
 
+	var moveCount int8
 	var bestMove *board.Move
 	var bestChildPVL PVLine
 	bestScore := -Infinity
@@ -265,6 +253,7 @@ func (e *Engine) negamax(
 		if !b.IsLegal(mv) {
 			continue
 		}
+		moveCount++
 
 		bb := b.Clone()
 		bb.Apply(mv)
@@ -299,6 +288,16 @@ func (e *Engine) negamax(
 		if err != nil {
 			break
 		}
+	}
+
+	// no moves were explored, game has terminated
+	if moveCount == 0 {
+		if b.IsKingChecked() {
+			// game is Checkmate
+			return -scoreCheckmate, nil
+		}
+		// game is Stalemate
+		return 0, nil
 	}
 
 	// set TranspositionTable

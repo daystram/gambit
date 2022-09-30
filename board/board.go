@@ -524,6 +524,63 @@ func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
 	return mv, nil
 }
 
+type UnApplyFunc func()
+
+func (b *Board) ApplyNull() UnApplyFunc {
+	ourTurn, oppTurn := b.turn, b.turn.Opposite()
+
+	// disable enpassant
+	prevEnPassant := b.enPassant
+	b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
+	b.enPassant = bitmap(0)
+	b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
+
+	// reset half move clock
+	prevHalfMoveClock := b.halfMoveClock
+	b.halfMoveClock = 0
+
+	// update full move clock
+	if ourTurn == SideBlack {
+		b.fullMoveClock++
+	}
+
+	// update ply
+	b.ply++
+
+	// update turn
+	b.turn = oppTurn
+	b.hash ^= zobristConstantSideWhite
+
+	// reset state cache
+	prevState := b.state
+	b.state = StateUnknown
+
+	return func() {
+		// revert enpassant
+		b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
+		b.enPassant = prevEnPassant
+		b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
+
+		// revert half move clock
+		b.halfMoveClock = prevHalfMoveClock
+
+		// revert full move clock
+		if ourTurn == SideBlack {
+			b.fullMoveClock--
+		}
+
+		// revert ply
+		b.ply--
+
+		// revert turn
+		b.turn = ourTurn
+		b.hash ^= zobristConstantSideWhite
+
+		// revert state cache
+		b.state = prevState
+	}
+}
+
 // TODO: return undo func?
 func (b *Board) Apply(mv *Move) {
 	ourTurn := b.turn

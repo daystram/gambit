@@ -22,6 +22,8 @@ const (
 	DefaultDepth           uint8 = 12
 	DefaultTimeoutDuration       = 10 * time.Second
 
+	nullMoveReduction = 2
+
 	killerCount    = 2
 	scoreCheckmate = Infinity - 1
 )
@@ -42,6 +44,9 @@ func (pvl *PVLine) GetPV() *board.Move {
 }
 
 func (pvl *PVLine) Set(mv *board.Move, nextPVL PVLine) {
+	if pvl == nil {
+		return
+	}
 	pvl.mvs = append([]*board.Move{mv}, nextPVL.mvs...)
 }
 
@@ -238,6 +243,22 @@ func (e *Engine) negamax(
 		}
 	}
 
+	isCheck := b.IsKingChecked()
+
+	// null move pruning
+	if !isRoot && depth >= 3 && !isCheck {
+		bb := b.Clone()
+		bb.ApplyNull()
+		score, err := e.negamax(ctx, bb, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
+		score = -score
+		if score >= beta {
+			return beta, nil
+		}
+		if err != nil {
+			return 0, nil
+		}
+	}
+
 	// generate next moves
 	mvs := b.GeneratePseudoLegalMoves()
 
@@ -293,7 +314,7 @@ func (e *Engine) negamax(
 
 	// no moves were explored, game has terminated
 	if moveCount == 0 {
-		if b.IsKingChecked() {
+		if isCheck {
 			// game is Checkmate
 			return -scoreCheckmate, nil
 		}

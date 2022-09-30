@@ -12,10 +12,16 @@ import (
 )
 
 var (
-	profile    = flag.Bool("profile", false, "serve pprof endpoint")
-	runMovegen = flag.Bool("movegen", false, "run movegen mode")
-	runStep    = flag.Bool("step", false, "run step mode")
-	runSearch  = flag.Bool("search", false, "run search mode")
+	profile = flag.Bool("profile", false, "serve pprof endpoint")
+
+	movegenRun  = flag.Bool("movegen", false, "run movegen mode")
+	movegenDraw = flag.Bool("movegen.draw", false, "draw applied moves in movegen mode")
+
+	stepRun = flag.Bool("step", false, "run step mode")
+
+	searchRun      = flag.Bool("search", false, "run search mode")
+	searchMaxDepth = flag.Int("search.maxdepth", 0, "search max depth in search mode")
+	searchTimeout  = flag.Int("search.timeout", 0, "search timeout in seconds in search mode")
 )
 
 func main() {
@@ -42,18 +48,18 @@ func runProfiler() {
 }
 
 func realMain(args []string) error {
-	if *runMovegen {
-		fen := board.DefaultStartingPositionFEN
-		if len(args) > 1 {
-			fen = strings.Join(args[1:], " ")
-		}
-		return movegen(fen)
+	fen := board.DefaultStartingPositionFEN
+	if len(args) > 1 {
+		fen = strings.Join(args[1:], " ")
 	}
-	if *runStep {
-		return step()
+	if *movegenRun {
+		return movegen(fen, *movegenDraw)
 	}
-	if *runSearch {
-		return search(50)
+	if *stepRun {
+		return step(fen)
+	}
+	if *searchRun {
+		return search(50, *searchMaxDepth, *searchTimeout)
 	}
 
 	return runUCI()

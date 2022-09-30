@@ -11,7 +11,7 @@ import (
 	"github.com/daystram/gambit/engine"
 )
 
-func search(steps int) error {
+func search(steps, maxDepth, timeout int) error {
 	rand.Seed(time.Now().Unix())
 	b, _, _ := board.NewBoard()
 	e := engine.NewEngine(&engine.EngineConfig{})
@@ -19,15 +19,23 @@ func search(steps int) error {
 	fmt.Println(b.FEN())
 	fmt.Println(b.DebugString())
 	initialBoard := b.Clone()
-
 	playingSide := b.Turn()
-	getMove := func(b *board.Board) *board.Move {
+
+	searchCfg := &engine.SearchConfig{
+		MaxDepth: 12,
+		Timeout:  30 * time.Second,
+		Debug:    true,
+	}
+	if maxDepth > 0 {
+		searchCfg.MaxDepth = uint8(maxDepth)
+	}
+	if timeout > 0 {
+		searchCfg.Timeout = time.Duration(timeout) * time.Second
+	}
+
+	getMove := func(ctx context.Context, b *board.Board) *board.Move {
 		if b.Turn() == playingSide {
-			mv, err := e.Search(context.Background(), b, &engine.SearchConfig{
-				MaxDepth: 12,
-				Timeout:  30 * time.Second,
-				Debug:    true,
-			})
+			mv, err := e.Search(ctx, b, searchCfg)
 			if err != nil {
 				panic(err)
 			}
@@ -39,6 +47,7 @@ func search(steps int) error {
 		}
 	}
 
+	ctx := context.Background()
 	var history []*board.Move
 	for step := 1; step <= steps; step++ {
 		fmt.Printf("\n=============== Move %d\n", b.FullMoveClock())
@@ -46,7 +55,7 @@ func search(steps int) error {
 		// White's move
 		if b.Turn() == board.SideWhite {
 			fmt.Printf("\n>>> %s\n", board.SideWhite)
-			mv := getMove(b)
+			mv := getMove(ctx, b)
 			b.Apply(mv)
 			history = append(history, mv)
 			fmt.Printf("--- %s\n", mv)
@@ -62,7 +71,7 @@ func search(steps int) error {
 		// Black's move
 		if b.Turn() == board.SideBlack {
 			fmt.Printf("\n>>> %s\n", board.SideBlack)
-			mv := getMove(b)
+			mv := getMove(ctx, b)
 			b.Apply(mv)
 			history = append(history, mv)
 			fmt.Printf("--- %s\n", mv)

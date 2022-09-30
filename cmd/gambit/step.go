@@ -9,14 +9,14 @@ import (
 	"github.com/daystram/gambit/board"
 )
 
-func step() error {
+func step(fen string) error {
 	log.Println("============ step")
 	var (
 		timesGenerateMoves []time.Duration
 		timesApply         []time.Duration
 		timesState         []time.Duration
 	)
-	b, _, _ := board.NewBoard()
+	b, _, _ := board.NewBoard(board.WithFEN(fen))
 	rand.Seed(1)
 stepLoop:
 	for step := 0; step < 5000; step++ {

@@ -495,7 +495,8 @@ func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
 		return nil, err
 	}
 	mv.IsTurn, mv.Piece = b.GetSideAndPieces(mv.From)
-	mv.IsCapture = b.occupied&maskCell[mv.To] != 0
+	mv.IsEnPassant = mv.Piece == PiecePawn && maskCell[mv.To] == b.enPassant
+	mv.IsCapture = b.occupied&maskCell[mv.To] != 0 || mv.IsEnPassant
 	if mv.Piece == PieceKing {
 		switch notation {
 		case "e1g1":
@@ -508,7 +509,6 @@ func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
 			mv.IsCastle = CastleDirectionBlackLeft
 		}
 	}
-	mv.IsEnPassant = mv.Piece == PiecePawn && maskCell[mv.To] == b.enPassant
 	if len(notation) == 5 {
 		switch notation[4] {
 		case 'n':

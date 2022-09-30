@@ -510,13 +510,13 @@ func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
 	if len(notation) == 5 {
 		switch notation[4] {
 		case 'n':
-			mv.IsPromote = PiecePawn
+			mv.IsPromote = PieceKnight
 		case 'b':
 			mv.IsPromote = PieceBishop
 		case 'r':
-			mv.IsPromote = PieceKnight
-		case 'q':
 			mv.IsPromote = PieceRook
+		case 'q':
+			mv.IsPromote = PieceQueen
 		}
 	}
 	return mv, nil

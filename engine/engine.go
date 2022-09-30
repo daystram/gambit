@@ -219,7 +219,7 @@ func (e *Engine) negamax(
 
 	// check if max depth reached or deadline exceeded
 	if err = ctx.Err(); depth == 0 || err != nil {
-		return e.evaluate(b), err
+		return e.Evaluate(b), err
 	}
 
 	// check from TranspositionTable

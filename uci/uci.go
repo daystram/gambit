@@ -171,6 +171,7 @@ func (i *Interface) commandDraw(_ context.Context) {
 	i.println("FEN :", i.board.FEN())
 	i.println("Hash:", i.board.Hash())
 	i.println("Stat:", i.board.State())
+	i.println("Eval:", i.engine.Evaluate(i.board))
 }
 
 func (i *Interface) commandGo(ctx context.Context, args []string) {

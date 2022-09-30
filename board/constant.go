@@ -80,12 +80,99 @@ var (
 	magicRookMask [TotalCells]bitmap
 	// magicRookNumber    [TotalCells]bitmap
 
-	materialPieceValue = [6 + 1]uint32{
+	scoreMaterial = [6 + 1]int32{
 		PiecePawn:   100,
 		PieceKnight: 320,
 		PieceBishop: 350,
 		PieceRook:   500,
 		PieceQueen:  900,
+	}
+	// PST table taken from https://www.chessprogramming.org/Simplified_Evaluation_Function
+	// TODO: tapered/transitioning PST
+	// TODO: create tuner
+	scorePosition = [6 + 1][64]int32{
+		PiecePawn: {
+			0, 0, 0, 0, 0, 0, 0, 0,
+			50, 50, 50, 50, 50, 50, 50, 50,
+			10, 10, 20, 30, 30, 20, 10, 10,
+			5, 5, 10, 25, 25, 10, 5, 5,
+			0, 0, 0, 20, 20, 0, 0, 0,
+			5, -5, -10, 0, 0, -10, -5, 5,
+			5, 10, 10, -20, -20, 10, 10, 5,
+			0, 0, 0, 0, 0, 0, 0, 0,
+		},
+		PieceKnight: {
+			-50, -40, -30, -30, -30, -30, -40, -50,
+			-40, -20, 0, 0, 0, 0, -20, -40,
+			-30, 0, 10, 15, 15, 10, 0, -30,
+			-30, 5, 15, 20, 20, 15, 5, -30,
+			-30, 0, 15, 20, 20, 15, 0, -30,
+			-30, 5, 10, 15, 15, 10, 5, -30,
+			-40, -20, 0, 5, 5, 0, -20, -40,
+			-50, -40, -30, -30, -30, -30, -40, -50,
+		},
+		PieceBishop: {
+			-20, -10, -10, -10, -10, -10, -10, -20,
+			-10, 0, 0, 0, 0, 0, 0, -10,
+			-10, 0, 5, 10, 10, 5, 0, -10,
+			-10, 5, 5, 10, 10, 5, 5, -10,
+			-10, 0, 10, 10, 10, 10, 0, -10,
+			-10, 10, 10, 10, 10, 10, 10, -10,
+			-10, 5, 0, 0, 0, 0, 5, -10,
+			-20, -10, -10, -10, -10, -10, -10, -20,
+		},
+		PieceRook: {
+			0, 0, 0, 0, 0, 0, 0, 0,
+			5, 10, 10, 10, 10, 10, 10, 5,
+			-5, 0, 0, 0, 0, 0, 0, -5,
+			-5, 0, 0, 0, 0, 0, 0, -5,
+			-5, 0, 0, 0, 0, 0, 0, -5,
+			-5, 0, 0, 0, 0, 0, 0, -5,
+			-5, 0, 0, 0, 0, 0, 0, -5,
+			0, 0, 0, 5, 5, 0, 0, 0,
+		},
+		PieceQueen: {
+			-20, -10, -10, -5, -5, -10, -10, -20,
+			-10, 0, 0, 0, 0, 0, 0, -10,
+			-10, 0, 5, 5, 5, 5, 0, -10,
+			-5, 0, 5, 5, 5, 5, 0, -5,
+			0, 0, 5, 5, 5, 5, 0, -5,
+			-10, 5, 5, 5, 5, 5, 0, -10,
+			-10, 0, 5, 0, 0, 0, 0, -10,
+			-20, -10, -10, -5, -5, -10, -10, -20,
+		},
+		PieceKing: {
+			-30, -40, -40, -50, -50, -40, -40, -30,
+			-30, -40, -40, -50, -50, -40, -40, -30,
+			-30, -40, -40, -50, -50, -40, -40, -30,
+			-30, -40, -40, -50, -50, -40, -40, -30,
+			-20, -30, -30, -40, -40, -30, -30, -20,
+			-10, -20, -20, -20, -20, -20, -20, -10,
+			20, 20, 0, 0, 0, 0, 20, 20,
+			20, 30, 10, 0, 0, 10, 30, 20,
+		},
+	}
+	scorePositionMap = [2 + 1][64]position.Pos{
+		SideWhite: {
+			position.A8, position.B8, position.C8, position.D8, position.E8, position.F8, position.G8, position.H8,
+			position.A7, position.B7, position.C7, position.D7, position.E7, position.F7, position.G7, position.H7,
+			position.A6, position.B6, position.C6, position.D6, position.E6, position.F6, position.G6, position.H6,
+			position.A5, position.B5, position.C5, position.D5, position.E5, position.F5, position.G5, position.H5,
+			position.A4, position.B4, position.C4, position.D4, position.E4, position.F4, position.G4, position.H4,
+			position.A3, position.B3, position.C3, position.D3, position.E3, position.F3, position.G3, position.H3,
+			position.A2, position.B2, position.C2, position.D2, position.E2, position.F2, position.G2, position.H2,
+			position.A1, position.B1, position.C1, position.D1, position.E1, position.F1, position.G1, position.H1,
+		},
+		SideBlack: { // horizontal flip of White
+			position.A1, position.B1, position.C1, position.D1, position.E1, position.F1, position.G1, position.H1,
+			position.A2, position.B2, position.C2, position.D2, position.E2, position.F2, position.G2, position.H2,
+			position.A3, position.B3, position.C3, position.D3, position.E3, position.F3, position.G3, position.H3,
+			position.A4, position.B4, position.C4, position.D4, position.E4, position.F4, position.G4, position.H4,
+			position.A5, position.B5, position.C5, position.D5, position.E5, position.F5, position.G5, position.H5,
+			position.A6, position.B6, position.C6, position.D6, position.E6, position.F6, position.G6, position.H6,
+			position.A7, position.B7, position.C7, position.D7, position.E7, position.F7, position.G7, position.H7,
+			position.A8, position.B8, position.C8, position.D8, position.E8, position.F8, position.G8, position.H8,
+		},
 	}
 )
 

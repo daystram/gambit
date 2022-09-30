@@ -18,16 +18,17 @@ type bitmap uint64
 type sideBitmaps [3]bitmap
 type pieceBitmaps [7]bitmap
 type cellList [64]uint8
-type sideMaterials [3]uint32
+type sideValue [3]int32
 
 // Little-endian rank-file (LERF) mapping
 type Board struct {
 	// grid data
-	sides     sideBitmaps
-	pieces    pieceBitmaps
-	occupied  bitmap
-	cells     cellList
-	materials sideMaterials
+	sides         sideBitmaps
+	pieces        pieceBitmaps
+	occupied      bitmap
+	cells         cellList
+	materialValue sideValue
+	positionValue sideValue
 
 	// meta
 	enPassant     bitmap
@@ -59,7 +60,7 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	for _, f := range opts {
 		f(cfg)
 	}
-	sides, pieces, cells, materials, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, err := parseFEN(cfg.fen)
+	sides, pieces, cells, materialValue, positionValue, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, err := parseFEN(cfg.fen)
 	if err != nil {
 		return nil, SideUnknown, err
 	}
@@ -69,7 +70,8 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 		pieces:        pieces,
 		occupied:      Union(sides[SideBlack], sides[SideWhite]),
 		cells:         cells,
-		materials:     materials,
+		materialValue: materialValue,
+		positionValue: positionValue,
 		enPassant:     enPassant,
 		castleRights:  castleRights,
 		halfMoveClock: halfMoveClock,
@@ -538,16 +540,21 @@ func (b *Board) Apply(mv *Move) {
 		b.flip(ourTurn, PieceKing, hopsKing[1])
 		b.cells[hopsKing[1]] = b.cells[hopsKing[0]]
 		b.cells[hopsKing[0]] = 0
+		b.positionValue[ourTurn] -= scorePosition[PieceKing][scorePositionMap[ourTurn][hopsKing[0]]]
+		b.positionValue[ourTurn] += scorePosition[PieceKing][scorePositionMap[ourTurn][hopsKing[1]]]
 
 		b.flip(ourTurn, PieceRook, hopsRook[0])
 		b.flip(ourTurn, PieceRook, hopsRook[1])
 		b.cells[hopsRook[1]] = b.cells[hopsRook[0]]
 		b.cells[hopsRook[0]] = 0
+		b.positionValue[ourTurn] -= scorePosition[PieceRook][scorePositionMap[ourTurn][hopsRook[0]]]
+		b.positionValue[ourTurn] += scorePosition[PieceRook][scorePositionMap[ourTurn][hopsRook[1]]]
 	} else {
 		// remove moving piece at mv.From
 		b.flip(ourTurn, mv.Piece, mv.From)
 		b.cells[mv.From] = 0
-		b.materials[ourTurn] -= materialPieceValue[mv.Piece]
+		b.materialValue[ourTurn] -= scoreMaterial[mv.Piece]
+		b.positionValue[ourTurn] -= scorePosition[mv.Piece][scorePositionMap[ourTurn][mv.From]]
 
 		// remove captured piece at mv.To
 		if mv.IsCapture {
@@ -560,7 +567,8 @@ func (b *Board) Apply(mv *Move) {
 			}
 			b.flip(oppTurn, capturedPiece, capturedPos)
 			b.cells[capturedPos] = 0
-			b.materials[oppTurn] -= materialPieceValue[capturedPiece]
+			b.materialValue[oppTurn] -= scoreMaterial[capturedPiece]
+			b.positionValue[oppTurn] -= scorePosition[capturedPiece][scorePositionMap[oppTurn][capturedPos]]
 		}
 
 		// place moving piece at mv.To
@@ -570,7 +578,8 @@ func (b *Board) Apply(mv *Move) {
 		}
 		b.flip(ourTurn, movingPiece, mv.To)
 		b.setSideAndPieces(mv.To, ourTurn, movingPiece)
-		b.materials[ourTurn] += materialPieceValue[movingPiece]
+		b.materialValue[ourTurn] += scoreMaterial[movingPiece]
+		b.positionValue[ourTurn] += scorePosition[movingPiece][scorePositionMap[ourTurn][mv.To]]
 	}
 
 	// update enPassant
@@ -757,8 +766,12 @@ func (b *Board) State() State {
 	return StateRunning
 }
 
-func (b *Board) GetMaterialBalance() (uint32, uint32) {
-	return b.materials[SideWhite], b.materials[SideBlack]
+func (b *Board) GetMaterialValue() (int32, int32) {
+	return b.materialValue[SideWhite], b.materialValue[SideBlack]
+}
+
+func (b *Board) GetPositionValue() (int32, int32) {
+	return b.positionValue[SideWhite], b.positionValue[SideBlack]
 }
 
 func (b *Board) Turn() Side {
@@ -783,7 +796,8 @@ func (b *Board) Clone() *Board {
 		pieces:        b.pieces,
 		occupied:      b.occupied,
 		cells:         b.cells,
-		materials:     b.materials,
+		materialValue: b.materialValue,
+		positionValue: b.positionValue,
 		enPassant:     b.enPassant,
 		castleRights:  b.castleRights,
 		halfMoveClock: b.halfMoveClock,

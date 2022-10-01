@@ -178,36 +178,80 @@ func (i *Interface) commandGo(ctx context.Context, args []string) {
 	if i.engineRunning {
 		return
 	}
-	cfg := &engine.SearchConfig{
-		MaxDepth: engine.DefaultDepth,
-		Timeout:  engine.DefaultTimeoutDuration,
-		Debug:    i.options.debug,
-	}
+
+	var clockCfg engine.ClockConfig
 	if len(args) > 0 {
 		switch args[0] {
 		case "infinite":
-			cfg.MaxDepth = engine.MaxDepth
-			cfg.Timeout = engine.MaxTimeoutDuration
+			clockCfg = engine.ClockConfig{}
+
+		case "movetime":
+			if len(args) != 2 {
+				return
+			}
+			movetime, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil || movetime == 0 {
+				return
+			}
+
+			clockCfg = engine.ClockConfig{
+				Movetime: time.Duration(movetime) * time.Millisecond,
+			}
+
+		case "wtime":
+			if len(args) < 4 {
+				return
+			}
+			whiteTime, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil || whiteTime == 0 {
+				return
+			}
+			blackTime, err := strconv.ParseUint(args[3], 10, 64)
+			if err != nil || blackTime == 0 {
+				return
+			}
+			var whiteIncrement, blackIncrement uint64
+			if len(args) == 8 { // increments only supported if both White's and Black's are provided
+				whiteIncrement, err = strconv.ParseUint(args[5], 10, 64)
+				if err != nil || whiteIncrement == 0 {
+					return
+				}
+				blackIncrement, err = strconv.ParseUint(args[7], 10, 64)
+				if err != nil || blackIncrement == 0 {
+					return
+				}
+			}
+
+			clockCfg = engine.ClockConfig{
+				WhiteTime:      time.Duration(whiteTime) * time.Millisecond,
+				BlackTime:      time.Duration(blackTime) * time.Millisecond,
+				WhiteIncrement: time.Duration(whiteIncrement) * time.Millisecond,
+				BlackIncrement: time.Duration(blackIncrement) * time.Millisecond,
+			}
 
 		case "depth":
 			if len(args) != 2 {
 				return
 			}
 			depth, err := strconv.ParseUint(args[1], 10, 8)
-			if err != nil {
+			if err != nil || depth == 0 {
 				return
 			}
-			cfg.MaxDepth = uint8(depth)
+			clockCfg = engine.ClockConfig{
+				Depth: uint8(depth),
+			}
 
-		case "movetime":
+		case "nodes":
 			if len(args) != 2 {
 				return
 			}
-			timeout, err := strconv.ParseUint(args[1], 10, 64)
-			if err != nil {
+			nodes, err := strconv.ParseUint(args[1], 10, 32)
+			if err != nil || nodes == 0 {
 				return
 			}
-			cfg.Timeout = time.Duration(timeout * uint64(time.Millisecond))
+			clockCfg = engine.ClockConfig{
+				Nodes: uint32(nodes),
+			}
 
 		case "perft":
 			if len(args) != 2 {
@@ -229,7 +273,6 @@ func (i *Interface) commandGo(ctx context.Context, args []string) {
 			_ = bench.Perft(depth, i.board.FEN(), i.options.parallelPerft, true, out)
 			return
 
-		// TODO: search args, e.g. depth, nodes
 		default:
 			return
 		}
@@ -241,7 +284,10 @@ func (i *Interface) commandGo(ctx context.Context, args []string) {
 		i.engineRunning = true
 		defer engineCancel()
 
-		bestMove, err := i.engine.Search(engineCtx, i.board, cfg)
+		bestMove, err := i.engine.Search(engineCtx, i.board, &engine.SearchConfig{
+			ClockConfig: clockCfg,
+			Debug:       i.options.debug,
+		})
 		if err != nil && !errors.Is(err, context.Canceled) {
 			panic(err)
 		}

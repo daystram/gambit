@@ -680,18 +680,18 @@ func (b *Board) Apply(mv *Move) {
 	}
 	// remove castling rights when Rook is captured
 	if capturedPiece == PieceRook {
-		if ourTurn == SideWhite {
-			if capturedPos == 7 {
+		if oppTurn == SideWhite {
+			if capturedPos == position.H1 {
 				b.castleRights.Set(CastleDirectionWhiteRight, false)
 			}
-			if capturedPos == 0 {
+			if capturedPos == position.A1 {
 				b.castleRights.Set(CastleDirectionWhiteLeft, false)
 			}
 		} else {
-			if capturedPos == 63 {
+			if capturedPos == position.H8 {
 				b.castleRights.Set(CastleDirectionBlackRight, false)
 			}
-			if capturedPos == 56 {
+			if capturedPos == position.A8 {
 				b.castleRights.Set(CastleDirectionBlackLeft, false)
 			}
 		}

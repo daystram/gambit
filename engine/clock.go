@@ -27,15 +27,16 @@ type ClockMode uint8
 const (
 	ClockModeInfinite ClockMode = iota
 	ClockModeMovetime
+	ClockModeGametime
 	ClockModeDepth
 	ClockModeNodes
 )
 
 type Clock struct {
-	mode           ClockMode
-	targetMovetime time.Duration
-	targetDepth    uint8
-	targetNodes    uint32
+	mode              ClockMode
+	allocatedMovetime time.Duration
+	allocatedDepth    uint8
+	allocatedNodes    uint32
 
 	done   bool
 	stopCh chan struct{}
@@ -63,40 +64,41 @@ type ClockConfig struct {
 
 func (c *Clock) Start(ctx context.Context, turn board.Side, fullMoveClock uint8, cfg *ClockConfig) {
 	c.Stop()
-	c.targetMovetime = MaxMovetime
-	c.targetDepth = MaxDepth
-	c.targetNodes = MaxNodes
+	c.allocatedMovetime = MaxMovetime
+	c.allocatedDepth = MaxDepth
+	c.allocatedNodes = MaxNodes
 	c.done = false
 
 	if cfg.Movetime != 0 || cfg.WhiteTime != 0 || cfg.BlackTime != 0 {
-		c.mode = ClockModeMovetime
 		if cfg.Movetime != 0 {
 			// movetime constraint
-			c.targetMovetime = cfg.Movetime
+			c.mode = ClockModeMovetime
+			c.allocatedMovetime = cfg.Movetime
 		} else {
 			// game clock constraint
 			// TODO: improve heuristics
+			c.mode = ClockModeGametime
 			phase := max(int64(expectedGameMoves-fullMoveClock), 1)
 			if turn == board.SideWhite {
-				c.targetMovetime = time.Duration(float64(cfg.WhiteTime)/float64(phase)) + time.Duration(float64(cfg.WhiteIncrement)*(1-movetimeAccumulationRatio))
+				c.allocatedMovetime = time.Duration(float64(cfg.WhiteTime)/float64(phase)) + time.Duration(float64(cfg.WhiteIncrement)*(1-movetimeAccumulationRatio))
 			} else {
-				c.targetMovetime = time.Duration(float64(cfg.BlackTime)/float64(phase)) + time.Duration(float64(cfg.BlackIncrement)*(1-movetimeAccumulationRatio))
+				c.allocatedMovetime = time.Duration(float64(cfg.BlackTime)/float64(phase)) + time.Duration(float64(cfg.BlackIncrement)*(1-movetimeAccumulationRatio))
 			}
 		}
-		if c.targetMovetime < minMovetime {
-			c.targetMovetime = minMovetime
+		if c.allocatedMovetime < minMovetime {
+			c.allocatedMovetime = minMovetime
 		}
 	} else if cfg.Depth != 0 {
 		c.mode = ClockModeDepth
-		c.targetDepth = cfg.Depth
-		if c.targetDepth > MaxDepth {
-			c.targetDepth = MaxDepth
+		c.allocatedDepth = cfg.Depth
+		if c.allocatedDepth > MaxDepth {
+			c.allocatedDepth = MaxDepth
 		}
 	} else if cfg.Nodes != 0 {
 		c.mode = ClockModeNodes
-		c.targetNodes = cfg.Nodes
-		if c.targetNodes > MaxNodes {
-			c.targetNodes = MaxNodes
+		c.allocatedNodes = cfg.Nodes
+		if c.allocatedNodes > MaxNodes {
+			c.allocatedNodes = MaxNodes
 		}
 	} else {
 		c.mode = ClockModeInfinite
@@ -104,8 +106,8 @@ func (c *Clock) Start(ctx context.Context, turn board.Side, fullMoveClock uint8,
 
 	go func() {
 		var cancel context.CancelFunc
-		if c.targetMovetime != 0 {
-			ctx, cancel = context.WithTimeout(ctx, c.targetMovetime-movetimeMargin)
+		if c.allocatedMovetime != 0 {
+			ctx, cancel = context.WithTimeout(ctx, c.allocatedMovetime-movetimeMargin)
 			defer cancel()
 		}
 		select {
@@ -127,9 +129,17 @@ func (c *Clock) DoneByMovetime() bool {
 }
 
 func (c *Clock) DoneByDepth(depth uint8) bool {
-	return depth > c.targetDepth
+	return depth > c.allocatedDepth
 }
 
 func (c *Clock) DoneByNodes(nodes uint32) bool {
-	return nodes > c.targetNodes
+	return nodes > c.allocatedNodes
+}
+
+func (c *Clock) Mode() ClockMode {
+	return c.mode
+}
+
+func (c *Clock) AllocatedMovetime() time.Duration {
+	return c.allocatedMovetime
 }

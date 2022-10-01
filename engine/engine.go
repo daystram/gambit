@@ -17,7 +17,8 @@ import (
 const (
 	ScoreInfinite int32 = math.MaxInt32
 
-	nullMoveReduction = 2
+	movetimeEndEarlyThreshold = 0.75
+	nullMoveReduction         = 2
 
 	killerCount    = 2
 	scoreCheckmate = ScoreInfinite - 1
@@ -113,10 +114,12 @@ type Engine struct {
 	killers [MaxDepth][killerCount]*board.Move
 	clock   *Clock
 
-	currentPly    uint8
-	currentTurn   board.Side
-	searchedNodes int
-	logger        func(...any)
+	currentPly       uint8
+	currentTurn      board.Side
+	nodes            uint32
+	totalNodes       uint32
+	totalElapsedTime time.Duration
+	logger           func(...any)
 }
 
 func NewEngine(cfg *EngineConfig) *Engine {
@@ -152,18 +155,20 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 	var bestScore int32
 	e.currentPly = b.Ply()
 	e.currentTurn = b.Turn()
+	e.totalNodes = 0
+	e.totalElapsedTime = 0
 
 	e.clock.Start(ctx, b.Turn(), b.FullMoveClock(), &cfg.ClockConfig)
 
 	for d := uint8(1); !e.clock.DoneByDepth(d); d++ {
-		e.searchedNodes = 0
+		e.nodes = 0
 		e.tt.ResetStats()
 		pvl := PVLine{}
 
 		var candidateScore int32
 		startTime := time.Now()
 		candidateScore = e.negamax(ctx, b, bestMove, &pvl, d, -ScoreInfinite, ScoreInfinite, true)
-		endTime := time.Now()
+		elapsedTime := time.Since(startTime)
 
 		if e.clock.DoneByMovetime() {
 			break
@@ -175,13 +180,16 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 		if cfg.Debug {
 			e.logger(message.NewPrinter(language.English).
 				Sprintf("depth:%d [%s] nodes:%d (%dn/s) t:%s\n    %s",
-					d, formatScoreDebug(bestScore, pvl), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()+1), endTime.Sub(startTime), pvl.String(b)))
+					d, formatScoreDebug(bestScore, pvl), e.nodes, e.nodes*1e9/uint32(elapsedTime.Nanoseconds()+1), elapsedTime, pvl.String(b)))
 		} else {
 			e.logger(fmt.Sprintf("info depth %d score %s time %d nodes %d nps %d pv %s",
-				d, formatScoreUCI(bestScore, pvl), endTime.Sub(startTime).Milliseconds(), e.searchedNodes, e.searchedNodes*1e9/int(endTime.Sub(startTime).Nanoseconds()+1), pvl.StringUCI()))
+				d, formatScoreUCI(bestScore, pvl), elapsedTime.Milliseconds(), e.nodes, e.nodes*1e9/uint32(elapsedTime.Nanoseconds()+1), pvl.StringUCI()))
 		}
 
-		if bestScore == scoreCheckmate || bestScore == -scoreCheckmate {
+		e.totalNodes += e.nodes
+		e.totalElapsedTime += elapsedTime
+		if bestScore == scoreCheckmate || bestScore == -scoreCheckmate ||
+			(e.clock.Mode() == ClockModeGametime && e.totalElapsedTime.Seconds() > e.clock.AllocatedMovetime().Seconds()*movetimeEndEarlyThreshold) {
 			break
 		}
 	}
@@ -201,7 +209,7 @@ func (e *Engine) negamax(
 	alpha, beta int32,
 	isRoot bool,
 ) int32 {
-	e.searchedNodes++
+	e.nodes++
 	initialAlpha := alpha
 
 	// check if max depth reached or movetime exceeded

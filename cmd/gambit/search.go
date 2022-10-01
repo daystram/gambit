@@ -22,15 +22,11 @@ func search(steps, maxDepth, timeout int) error {
 	playingSide := b.Turn()
 
 	searchCfg := &engine.SearchConfig{
-		MaxDepth: 12,
-		Timeout:  30 * time.Second,
-		Debug:    true,
-	}
-	if maxDepth > 0 {
-		searchCfg.MaxDepth = uint8(maxDepth)
-	}
-	if timeout > 0 {
-		searchCfg.Timeout = time.Duration(timeout) * time.Second
+		ClockConfig: engine.ClockConfig{
+			Movetime: time.Duration(timeout) * time.Millisecond,
+			Depth:    uint8(maxDepth),
+		},
+		Debug: true,
 	}
 
 	getMove := func(ctx context.Context, b *board.Board) *board.Move {

@@ -15,17 +15,12 @@ import (
 )
 
 const (
-	Infinity int32 = math.MaxInt32
-
-	MaxDepth               uint8 = 255
-	MaxTimeoutDuration           = time.Hour
-	DefaultDepth           uint8 = 12
-	DefaultTimeoutDuration       = 10 * time.Second
+	ScoreInfinite int32 = math.MaxInt32
 
 	nullMoveReduction = 2
 
 	killerCount    = 2
-	scoreCheckmate = Infinity - 1
+	scoreCheckmate = ScoreInfinite - 1
 )
 
 func DefaultLogger(a ...any) {
@@ -109,14 +104,14 @@ type EngineConfig struct {
 }
 
 type SearchConfig struct {
-	MaxDepth uint8
-	Timeout  time.Duration
-	Debug    bool
+	ClockConfig ClockConfig
+	Debug       bool
 }
 
 type Engine struct {
 	tt      *TranspositionTable
 	killers [MaxDepth][killerCount]*board.Move
+	clock   *Clock
 
 	currentPly    uint8
 	currentTurn   board.Side
@@ -134,27 +129,12 @@ func NewEngine(cfg *EngineConfig) *Engine {
 
 	return &Engine{
 		tt:     NewTranspositionTable(cfg.HashTableSize),
+		clock:  NewClock(),
 		logger: cfg.Logger,
 	}
 }
 
 func (e *Engine) Search(ctx context.Context, b *board.Board, cfg *SearchConfig) (*board.Move, error) {
-	if cfg.MaxDepth == 0 {
-		cfg.MaxDepth = DefaultDepth
-	}
-	if cfg.MaxDepth >= MaxDepth {
-		cfg.MaxDepth = MaxDepth - 1
-	}
-	if cfg.Timeout == 0 {
-		cfg.Timeout = DefaultTimeoutDuration
-	}
-	if cfg.Timeout >= MaxTimeoutDuration {
-		cfg.Timeout = MaxTimeoutDuration
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
-
 	mv, err := e.search(ctx, b, cfg)
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		return nil, err
@@ -173,18 +153,19 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 	e.currentPly = b.Ply()
 	e.currentTurn = b.Turn()
 
-	// TODO: Null-move heuristic (may not be necessary for now)
-	for d := uint8(1); d < cfg.MaxDepth+1; d++ {
+	e.clock.Start(ctx, b.Turn(), b.FullMoveClock(), &cfg.ClockConfig)
+
+	for d := uint8(1); !e.clock.DoneByDepth(d); d++ {
 		e.searchedNodes = 0
 		e.tt.ResetStats()
 		pvl := PVLine{}
 
 		var candidateScore int32
 		startTime := time.Now()
-		candidateScore, err = e.negamax(ctx, b, bestMove, &pvl, d, -Infinity, Infinity, true)
+		candidateScore = e.negamax(ctx, b, bestMove, &pvl, d, -ScoreInfinite, ScoreInfinite, true)
 		endTime := time.Now()
 
-		if err != nil {
+		if e.clock.DoneByMovetime() {
 			break
 		}
 
@@ -204,6 +185,8 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 			break
 		}
 	}
+
+	e.clock.Stop()
 	return bestMove, err
 }
 
@@ -217,14 +200,13 @@ func (e *Engine) negamax(
 	depth uint8,
 	alpha, beta int32,
 	isRoot bool,
-) (int32, error) {
-	var err error
+) int32 {
 	e.searchedNodes++
 	initialAlpha := alpha
 
-	// check if max depth reached or deadline exceeded
-	if err = ctx.Err(); depth == 0 || err != nil {
-		return e.Evaluate(b), err
+	// check if max depth reached or movetime exceeded
+	if depth == 0 || e.clock.DoneByMovetime() {
+		return e.Evaluate(b)
 	}
 
 	// check from TranspositionTable
@@ -232,14 +214,14 @@ func (e *Engine) negamax(
 	if !isRoot && !ok && ttDepth >= depth {
 		switch typ {
 		case EntryTypeExact:
-			return ttScore, nil
+			return ttScore
 		case EntryTypeLowerBound:
 			alpha = max(alpha, ttScore)
 		case EntryTypeUpperBound:
 			beta = min(beta, ttScore)
 		}
 		if alpha >= beta {
-			return ttScore, nil
+			return ttScore
 		}
 	}
 
@@ -249,13 +231,12 @@ func (e *Engine) negamax(
 	if !isRoot && depth >= 3 && !isCheck {
 		bb := b.Clone()
 		bb.ApplyNull()
-		score, err := e.negamax(ctx, bb, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
-		score = -score
+		score := -e.negamax(ctx, bb, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
 		if score >= beta {
-			return beta, nil
+			return beta
 		}
-		if err != nil {
-			return 0, nil
+		if e.clock.DoneByMovetime() {
+			return 0
 		}
 	}
 
@@ -268,7 +249,7 @@ func (e *Engine) negamax(
 	var moveCount int8
 	var bestMove *board.Move
 	var bestChildPVL PVLine
-	bestScore := -Infinity
+	bestScore := -ScoreInfinite
 	for i := 0; i < len(mvs); i++ {
 		e.sortMoves(&mvs, i)
 		mv := mvs[i]
@@ -280,10 +261,8 @@ func (e *Engine) negamax(
 		bb := b.Clone()
 		bb.Apply(mv)
 
-		var score int32
 		var childPVL PVLine
-		score, err = e.negamax(ctx, bb, nil, &childPVL, depth-1, -beta, -alpha, false)
-		score = -score // invert score
+		score := -e.negamax(ctx, bb, nil, &childPVL, depth-1, -beta, -alpha, false)
 
 		if score > bestScore || bestMove == nil {
 			bestMove = mv
@@ -307,7 +286,7 @@ func (e *Engine) negamax(
 			alpha = score
 		}
 
-		if err != nil {
+		if e.clock.DoneByMovetime() {
 			break
 		}
 	}
@@ -316,10 +295,10 @@ func (e *Engine) negamax(
 	if moveCount == 0 {
 		if isCheck {
 			// game is Checkmate
-			return -scoreCheckmate, nil
+			return -scoreCheckmate
 		}
 		// game is Stalemate
-		return 0, nil
+		return 0
 	}
 
 	// set TranspositionTable
@@ -334,7 +313,7 @@ func (e *Engine) negamax(
 	e.tt.Set(typ, b, bestMove, bestScore, depth, e.currentPly)
 
 	pvl.Set(bestMove, bestChildPVL)
-	return bestScore, err
+	return bestScore
 }
 
 func (e *Engine) TranspositionStats() string {
@@ -357,10 +336,10 @@ func max[T constraints.Ordered](x1, x2 T) T {
 }
 
 func formatScoreDebug(s int32, pvl PVLine) string {
-	if s == Infinity {
+	if s == ScoreInfinite {
 		return "+inf"
 	}
-	if s == -Infinity {
+	if s == -ScoreInfinite {
 		return "-inf"
 	}
 	if s == scoreCheckmate {

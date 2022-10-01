@@ -20,8 +20,8 @@ var (
 	stepRun = flag.Bool("step", false, "run step mode")
 
 	searchRun      = flag.Bool("search", false, "run search mode")
-	searchMaxDepth = flag.Int("search.maxdepth", 0, "search max depth in search mode")
-	searchTimeout  = flag.Int("search.timeout", 0, "search timeout in seconds in search mode")
+	searchDepth    = flag.Int("search.depth", 0, "search depth in search mode")
+	searchMovetime = flag.Int("search.movetime", 0, "search movetime in milliseconds in search mode")
 )
 
 func main() {
@@ -59,7 +59,7 @@ func realMain(args []string) error {
 		return step(fen)
 	}
 	if *searchRun {
-		return search(50, *searchMaxDepth, *searchTimeout)
+		return search(50, *searchDepth, *searchMovetime)
 	}
 
 	return runUCI()

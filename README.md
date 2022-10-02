@@ -2,40 +2,35 @@
 
 ## TODO
 
-- [x] Root position system
-- [x] Bitboard representation
-- [x] Move generation
-  - [x] Basic moves
+- Root position system
+- Bitboard representation
+  - [x] FEN coder/encoder
+- Move generation
+  - [x] Basic pseudo-legal movegen
   - [x] Perft test
-    - [ ] Bug fixes
-    - [x] Go test
-  - [x] King check restriction
-  - [x] Castling
-  - [x] En-passant
-  - [ ] Perfomance optimization
-    - [x] Code clean up
-    - [x] Rewrite movegen
-    - [ ] Strictly legal movegen
-    - [ ] Magic bitboards
-- [-] Game state
-  - [ ] Repetition
+  - [ ] Magic bitboards
+- Game state
+  - [ ] Repetition check
   - [x] Half-move clock
   - [x] Full-move clock
+  - [x] Zobrist hash
   - [ ] TBA
-- [ ] Move application
+- Move application
   - [x] Copy-Make
-  - [ ] Make-Unmake
-- [ ] Engine
-  - [ ] Scoring heuristics
+  - [x] Make-Unmake
+- Engine
+  - Scoring heuristics
     - [x] Piece value
+    - [x] PST
+    - [ ] Tapered PST
   - [x] Search runner
   - [x] Negamax with IDDFS
   - [x] Transposition table
-  - [x] Basic move ordering
+  - [x] Basic capture move ordering
   - [x] Transposition table PV move ordering
   - [x] Killer heuristic move ordering
+  - [x] Null move pruning
+  - [x] Clock manager
   - [ ] TBA
-- [ ] Interface
-  - [ ] UCI
-  - [x] FEN coder/encoder
-- [ ] TBA
+- Interface
+  - [x] UCI

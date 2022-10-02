@@ -95,7 +95,6 @@ func TestPerft(t *testing.T) {
 			wantChk:   809_099,
 		},
 
-		// depth >= 3 failing perft is a known issue
 		{
 			fen:       "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
 			depth:     1,
@@ -108,12 +107,12 @@ func TestPerft(t *testing.T) {
 			wantNodes: 1_486,
 			onlyNodes: true,
 		},
-		// {
-		// 	fen:       "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
-		// 	depth:     3,
-		// 	wantNodes: 62_379,
-		// 	onlyNodes: true,
-		// },
+		{
+			fen:       "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+			depth:     3,
+			wantNodes: 62_379,
+			onlyNodes: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -129,7 +128,7 @@ func TestPerft(t *testing.T) {
 			t.Logf("\n%s\n", b.Draw())
 
 			var nodes, cap, enp, cas, pro, chk uint64
-			runPerftParallel(b, tt.depth, true, false, nil, &nodes, &cap, &enp, &cas, &pro, &chk)
+			runPerft(b, tt.depth, true, false, nil, &nodes, &cap, &enp, &cas, &pro, &chk)
 
 			if nodes != tt.wantNodes {
 				t.Errorf("unexpected nodes: got=%d want=%d", nodes, tt.wantNodes)

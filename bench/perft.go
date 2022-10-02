@@ -54,14 +54,13 @@ func runPerft(b *board.Board, d int, root, verbose bool, out chan string, nodes,
 		}
 
 		var child uint64
-		bb := b.Clone()
-		bb.Apply(mv)
+		unapply := b.Apply(mv)
 
 		if d != 2 {
-			child = runPerft(bb, d-1, false, verbose, out, nodes, cap, enp, cas, pro, chk)
+			child = runPerft(b, d-1, false, verbose, out, nodes, cap, enp, cas, pro, chk)
 		} else {
-			for _, leaf := range bb.GeneratePseudoLegalMoves() {
-				if !bb.IsLegal(leaf) {
+			for _, leaf := range b.GeneratePseudoLegalMoves() {
+				if !b.IsLegal(leaf) {
 					continue
 				}
 				child++
@@ -87,6 +86,8 @@ func runPerft(b *board.Board, d int, root, verbose bool, out chan string, nodes,
 			out <- fmt.Sprintf("%s: %d", mv.UCI(), child)
 		}
 		sum += child
+
+		unapply()
 	}
 	return sum
 }

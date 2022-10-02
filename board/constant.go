@@ -35,11 +35,11 @@ var (
 		position.Rank7: 0x_00_FF_00_00_00_00_00_00,
 		position.Rank8: 0x_FF_00_00_00_00_00_00_00,
 	}
-	maskCell   [TotalCells]bitmap
-	maskDia    [TotalCells]bitmap
-	maskADia   [TotalCells]bitmap
-	maskKnight [TotalCells]bitmap
-	maskKing   [TotalCells]bitmap
+	maskCell   [TotalCells + 1]bitmap
+	maskDia    [TotalCells + 1]bitmap
+	maskADia   [TotalCells + 1]bitmap
+	maskKnight [TotalCells + 1]bitmap
+	maskKing   [TotalCells + 1]bitmap
 
 	maskCastling = [4 + 1]bitmap{}
 	posCastling  = [4 + 1][6 + 1][2]position.Pos{
@@ -68,8 +68,8 @@ var (
 		CastleDirectionBlackLeft:  0b0001,
 	}
 
-	zobristConstantPiece        [2 + 1][6 + 1][64]uint64
-	zobristConstantEnPassant    [64]uint64
+	zobristConstantPiece        [2 + 1][6 + 1][TotalCells + 1]uint64
+	zobristConstantEnPassant    [TotalCells + 1]uint64
 	zobristConstantCastleRights [16]uint64
 	zobristConstantSideWhite    uint64
 
@@ -90,7 +90,7 @@ var (
 	// PST table taken from https://www.chessprogramming.org/Simplified_Evaluation_Function
 	// TODO: tapered/transitioning PST
 	// TODO: create tuner
-	scorePosition = [6 + 1][64]int32{
+	scorePosition = [6 + 1][TotalCells]int32{
 		PiecePawn: {
 			0, 0, 0, 0, 0, 0, 0, 0,
 			50, 50, 50, 50, 50, 50, 50, 50,
@@ -152,7 +152,7 @@ var (
 			20, 30, 10, 0, 0, 10, 30, 20,
 		},
 	}
-	scorePositionMap = [2 + 1][64]position.Pos{
+	scorePositionMap = [2 + 1][TotalCells]position.Pos{
 		SideWhite: {
 			position.A8, position.B8, position.C8, position.D8, position.E8, position.F8, position.G8, position.H8,
 			position.A7, position.B7, position.C7, position.D7, position.E7, position.F7, position.G7, position.H7,

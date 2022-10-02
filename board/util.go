@@ -85,15 +85,7 @@ func Set(b bitmap, pos position.Pos, value bool) bitmap {
 }
 
 func (bm bitmap) LS1B() position.Pos {
-	var p position.Pos
-	for bm != 0 {
-		if bm&1 == 1 {
-			return p
-		}
-		p++
-		bm >>= 1
-	}
-	return p
+	return position.Pos(bits.TrailingZeros64(uint64(bm)))
 }
 
 func (bm bitmap) Dump(sym ...rune) string {

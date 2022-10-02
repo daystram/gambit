@@ -179,11 +179,11 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 		if cfg.Debug {
 			e.logger(message.NewPrinter(language.English).
-				Sprintf("depth:%d [%s] nodes:%d (%dn/s) t:%s\n    %s",
-					d, formatScoreDebug(bestScore, pvl), e.nodes, e.nodes*1e9/uint32(elapsedTime.Nanoseconds()+1), elapsedTime, pvl.String(b)))
+				Sprintf("depth:%d [%s] nodes:%d (%.0fn/s) t:%s\n    %s",
+					d, formatScoreDebug(bestScore, pvl), e.nodes, float64(e.nodes)/((elapsedTime + 1).Seconds()), elapsedTime, pvl.String(b)))
 		} else {
-			e.logger(fmt.Sprintf("info depth %d score %s time %d nodes %d nps %d pv %s",
-				d, formatScoreUCI(bestScore, pvl), elapsedTime.Milliseconds(), e.nodes, e.nodes*1e9/uint32(elapsedTime.Nanoseconds()+1), pvl.StringUCI()))
+			e.logger(fmt.Sprintf("info depth %d score %s time %d nodes %d nps %.0f pv %s",
+				d, formatScoreUCI(bestScore, pvl), elapsedTime.Milliseconds(), e.nodes, float64(e.nodes)/((elapsedTime + 1).Seconds()), pvl.StringUCI()))
 		}
 
 		e.totalNodes += e.nodes
@@ -237,9 +237,10 @@ func (e *Engine) negamax(
 
 	// null move pruning
 	if !isRoot && depth >= 3 && !isCheck {
-		bb := b.Clone()
-		bb.ApplyNull()
-		score := -e.negamax(ctx, bb, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
+		unApply := b.ApplyNull()
+		score := -e.negamax(ctx, b, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
+		unApply()
+
 		if score >= beta {
 			return beta
 		}
@@ -266,11 +267,10 @@ func (e *Engine) negamax(
 		}
 		moveCount++
 
-		bb := b.Clone()
-		bb.Apply(mv)
-
 		var childPVL PVLine
-		score := -e.negamax(ctx, bb, nil, &childPVL, depth-1, -beta, -alpha, false)
+		unApply := b.Apply(mv)
+		score := -e.negamax(ctx, b, nil, &childPVL, depth-1, -beta, -alpha, false)
+		unApply()
 
 		if score > bestScore || bestMove == nil {
 			bestMove = mv

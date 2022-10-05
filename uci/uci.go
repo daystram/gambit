@@ -23,7 +23,7 @@ var (
 	defaultOptions = options{
 		debug:         false,
 		hashTableSize: engine.DefaultHashTableSize,
-		parallelPerft: true,
+		parallelPerft: false,
 	}
 )
 

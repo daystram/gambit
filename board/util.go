@@ -77,6 +77,17 @@ func ScanHit(cell, occupied, mask bitmap) bitmap {
 	return ((blocker - 2*cell) ^ reverse(reverse(blocker)-2*reverse(cell))) & mask
 }
 
+type Magic struct {
+	Attacks *[4096]bitmap
+	Magic   bitmap
+	Mask    bitmap
+	Shift   uint8
+}
+
+func (m *Magic) GetIndex(occupancy bitmap) uint16 {
+	return uint16(((occupancy & m.Mask) * m.Magic) >> m.Shift)
+}
+
 func Set(b bitmap, pos position.Pos, value bool) bitmap {
 	if value {
 		return b | maskCell[pos]
@@ -86,6 +97,10 @@ func Set(b bitmap, pos position.Pos, value bool) bitmap {
 
 func (bm bitmap) LS1B() position.Pos {
 	return position.Pos(bits.TrailingZeros64(uint64(bm)))
+}
+
+func (bm bitmap) BitCount() uint8 {
+	return uint8(bits.OnesCount64(uint64(bm)))
 }
 
 func (bm bitmap) Dump(sym ...rune) string {

@@ -73,12 +73,10 @@ var (
 	zobristConstantCastleRights [16]uint64
 	zobristConstantSideWhite    uint64
 
-	// magicBishopAttacks [TotalCells][1]bitmap
-	magicBishopMask [TotalCells]bitmap
-	// magicBishopNumber  [TotalCells]bitmap
-	// magicRookAttacks   [TotalCells][1]bitmap
-	magicRookMask [TotalCells]bitmap
-	// magicRookNumber    [TotalCells]bitmap
+	// Seeds taken from https://github.com/official-stockfish/Stockfish.
+	magicSeeds  = []uint64{8977, 44560, 54343, 38998, 5731, 95205, 104912, 17020}
+	magicBishop [TotalCells]*Magic
+	magicRook   [TotalCells]*Magic
 
 	scoreMaterial = [6 + 1]int32{
 		PiecePawn:   100,
@@ -179,7 +177,8 @@ var (
 func init() {
 	initMask()
 	initZobrist()
-	initMagic()
+	initMagic(PieceBishop)
+	initMagic(PieceRook)
 }
 
 func initMask() {
@@ -265,16 +264,67 @@ func initZobrist() {
 	zobristConstantSideWhite = r.Uint64()
 }
 
-func initMagic() {
-	// Bishop
-	for pos := position.Pos(0); pos < TotalCells; pos++ {
-		magicBishopMask[pos] = (maskDia[pos] | maskADia[pos]) &^ maskCell[pos]
+func initMagic(p Piece) {
+	var magics *[TotalCells]*Magic
+	var genMask func(position.Pos) bitmap
+	var genMovesBM func(position.Pos, bitmap) bitmap
+	switch p {
+	case PieceBishop:
+		magics = &magicBishop
+		genMask = func(pos position.Pos) bitmap {
+			edge := maskCol[position.FileA] | maskCol[position.FileH] | maskRow[position.Rank1] | maskRow[position.Rank8]
+			return HitDiagonals(pos, 0) &^ edge
+		}
+		genMovesBM = HitDiagonals
+	case PieceRook:
+		magics = &magicRook
+		genMask = func(pos position.Pos) bitmap {
+			var edge bitmap
+			if pos.X() != position.FileA {
+				edge |= maskCol[position.FileA]
+			}
+			if pos.X() != position.FileH {
+				edge |= maskCol[position.FileH]
+			}
+			if pos.Y() != position.Rank1 {
+				edge |= maskRow[position.Rank1]
+			}
+			if pos.Y() != position.Rank8 {
+				edge |= maskRow[position.Rank8]
+			}
+			return HitLaterals(pos, 0) &^ edge
+		}
+		genMovesBM = HitLaterals
+	default:
+		return
 	}
 
-	// Rook
-	for pos := position.Pos(0); pos < TotalCells; pos++ {
-		magicRookMask[pos] = (maskRow[pos/Width] | maskCol[pos%Width]) &^ maskCell[pos]
-	}
+	r := NewPseudoRand()
+	for pos := position.A1; pos <= position.H8; pos++ {
+		m := &Magic{}
+		m.Mask = genMask(pos) &^ maskCell[pos]
+		m.Shift = 64 - m.Mask.BitCount()
 
-	// TODO: try using magics
+		var size int
+		var blocker bitmap
+		var blockers, attacks [4096]bitmap
+		for size, blocker = 0, bitmap(0); size == 0 || blocker != 0; size++ {
+			blockers[size] = blocker
+			attacks[size] = genMovesBM(pos, blocker)
+			blocker = (blocker - m.Mask) & m.Mask
+		}
+		r.Seed(magicSeeds[pos.Y()])
+		for i := 0; i < size; {
+			m.Magic = bitmap(r.SparseUint64())
+			m.Attacks = &[4096]bitmap{}
+			for i = 0; i < size; i++ {
+				idx := m.GetIndex(blockers[i])
+				if (*m.Attacks)[idx] != 0 && (*m.Attacks)[idx] != attacks[i] {
+					break
+				}
+				(*m.Attacks)[idx] = attacks[i]
+			}
+		}
+		(*magics)[pos] = m
+	}
 }

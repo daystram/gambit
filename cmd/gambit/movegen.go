@@ -25,11 +25,11 @@ func movegen(fen string, draw bool) error {
 			if !b.IsLegal(mv) {
 				continue
 			}
-			bb := b.Clone()
-			bb.Apply(mv)
+			unApply := b.Apply(mv)
 			fmt.Println(mv)
-			fmt.Println(bb.Draw())
-			fmt.Println(bb.FEN())
+			fmt.Println(b.Draw())
+			fmt.Println(b.FEN())
+			unApply()
 		}
 	}
 	return nil
@@ -37,11 +37,13 @@ func movegen(fen string, draw bool) error {
 
 func dumpMoves(b *board.Board) {
 	mvs := b.GeneratePseudoLegalMoves()
-	for i, mv := range mvs {
+	i := 0
+	for _, mv := range mvs {
 		if !b.IsLegal(mv) {
 			continue
 		}
+		i++
 		fmt.Printf("option %*d: [%s] [%s] %s %s %s => %s (cap=%v) (enp=%v) (cas=%s) (pro=%s)\n",
-			len(strconv.Itoa(len(mvs))), i+1, mv.UCI(), mv.Algebra(), mv.IsTurn, mv.Piece, mv.From, mv.To, mv.IsCapture, mv.IsEnPassant, mv.IsCastle, mv.IsPromote)
+			len(strconv.Itoa(len(mvs))), i, mv.UCI(), mv.Algebra(), mv.IsTurn, mv.Piece, mv.From, mv.To, mv.IsCapture, mv.IsEnPassant, mv.IsCastle, mv.IsPromote)
 	}
 }

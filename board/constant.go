@@ -1,6 +1,7 @@
 package board
 
 import (
+	"fmt"
 	"math/rand"
 
 	"github.com/daystram/gambit/position"
@@ -175,10 +176,12 @@ var (
 )
 
 func init() {
+	fmt.Print("Initializing lookup boards... ")
 	initMask()
 	initZobrist()
 	initMagic(PieceBishop)
 	initMagic(PieceRook)
+	fmt.Println("Done")
 }
 
 func initMask() {

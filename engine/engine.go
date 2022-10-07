@@ -218,9 +218,14 @@ func (e *Engine) negamax(
 	e.nodes++
 	initialAlpha := alpha
 
-	// check if max depth reached or movetime exceeded
-	if depth == 0 || e.clock.DoneByMovetime() {
-		return e.Evaluate(b)
+	// check if movetime exceeded
+	if e.clock.DoneByMovetime() {
+		return 0
+	}
+
+	// check if leaf reached
+	if depth == 0 {
+		return e.quiescence(b, pvl, alpha, beta)
 	}
 
 	// check from TranspositionTable
@@ -239,7 +244,7 @@ func (e *Engine) negamax(
 		}
 	}
 
-	isCheck := b.IsKingChecked()
+	isCheck := b.IsKingChecked(b.Turn())
 
 	// null move pruning
 	if !isRoot && depth >= 3 && !isCheck {
@@ -325,6 +330,62 @@ func (e *Engine) negamax(
 		typ = EntryTypeExact
 	}
 	e.tt.Set(typ, b, bestMove, bestScore, depth, e.currentPly)
+
+	return bestScore
+}
+
+func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int32 {
+	e.nodes++
+
+	if e.clock.DoneByMovetime() {
+		return 0
+	}
+
+	eval := e.Evaluate(b)
+	if b.Ply() >= MaxDepth {
+		return eval
+	}
+	isCheck := b.IsKingChecked(b.Turn())
+	if !isCheck && eval >= beta {
+		return beta // cutoff, but full search if in check
+	}
+	if alpha < eval {
+		alpha = eval
+	}
+
+	mvs := b.GeneratePseudoLegalMoves()
+
+	e.scoreMoves(b, nil, nil, &mvs)
+
+	var childPVL PVLine
+	bestScore := eval
+	for i := 0; i < len(mvs); i++ {
+		e.sortMoves(&mvs, i)
+		mv := mvs[i]
+		if (!isCheck && !mv.IsCapture) || !b.IsLegal(mv) {
+			continue
+		}
+
+		unApply := b.Apply(mv)
+		score := -e.quiescence(b, &childPVL, -beta, -alpha)
+		unApply()
+
+		if score > bestScore {
+			bestScore = score
+		}
+		if score >= beta {
+			break // fail-hard cutoff
+		}
+		if score > alpha {
+			alpha = score
+			pvl.Set(mv, childPVL)
+		}
+
+		if e.clock.DoneByMovetime() {
+			break
+		}
+		childPVL.Clear()
+	}
 
 	return bestScore
 }

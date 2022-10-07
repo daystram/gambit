@@ -238,8 +238,8 @@ func (b *Board) GetCellAttackers(attackerSide Side, pos position.Pos, limit uint
 	return count, attackBM
 }
 
-func (b *Board) IsKingChecked() bool {
-	c, _ := b.GetCellAttackers(b.turn.Opposite(), b.GetBitmap(b.turn, PieceKing).LS1B(), 1)
+func (b *Board) IsKingChecked(s Side) bool {
+	c, _ := b.GetCellAttackers(s.Opposite(), b.GetBitmap(s, PieceKing).LS1B(), 1)
 	return c != 0
 }
 
@@ -876,7 +876,7 @@ func (b *Board) State() State {
 			legalMoves++
 		}
 	}
-	if b.IsKingChecked() {
+	if b.IsKingChecked(b.turn) {
 		if legalMoves == 0 {
 			if b.turn == SideWhite {
 				return StateCheckmateWhite

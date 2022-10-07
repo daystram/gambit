@@ -16,9 +16,12 @@ type Move struct {
 	Score uint8 // used for move ordering
 }
 
-func (mv Move) Equals(other *Move) bool {
-	return other != nil &&
-		mv.From == other.From &&
+func (mv Move) IsNull() bool {
+	return mv.Piece == PieceUnknown
+}
+
+func (mv Move) Equals(other Move) bool {
+	return mv.From == other.From &&
 		mv.To == other.To &&
 		mv.IsTurn == other.IsTurn &&
 		mv.IsCapture == other.IsCapture &&

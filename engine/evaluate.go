@@ -21,7 +21,7 @@ var (
 	scoreKiller uint8 = 10
 )
 
-func (e *Engine) scoreMoves(b *board.Board, pvMove, hashMove *board.Move, mvs *[]*board.Move) {
+func (e *Engine) scoreMoves(b *board.Board, pvMove, hashMove board.Move, mvs *[]board.Move) {
 	for i, mv := range *mvs {
 		var score uint8
 		if mv.Equals(pvMove) {
@@ -43,7 +43,7 @@ func (e *Engine) scoreMoves(b *board.Board, pvMove, hashMove *board.Move, mvs *[
 	}
 }
 
-func (e *Engine) sortMoves(mvs *[]*board.Move, index int) {
+func (e *Engine) sortMoves(mvs *[]board.Move, index int) {
 	bestIndex, bestScore := index, uint8(0)
 	for i := index; i < len(*mvs); i++ {
 		mv := (*mvs)[i]

@@ -77,8 +77,8 @@ var (
 
 	// Seeds taken from https://github.com/official-stockfish/Stockfish.
 	magicSeeds  = []uint64{8977, 44560, 54343, 38998, 5731, 95205, 104912, 17020}
-	magicBishop [TotalCells]*Magic
-	magicRook   [TotalCells]*Magic
+	magicBishop [TotalCells]Magic
+	magicRook   [TotalCells]Magic
 
 	scoreMaterial = [6 + 1]int32{
 		PiecePawn:   100,
@@ -270,7 +270,7 @@ func initZobrist() {
 }
 
 func initMagic(p Piece) {
-	var magics *[TotalCells]*Magic
+	var magics *[TotalCells]Magic
 	var genMask func(position.Pos) bitmap
 	var genMovesBM func(position.Pos, bitmap) bitmap
 	switch p {
@@ -306,7 +306,7 @@ func initMagic(p Piece) {
 
 	r := NewPseudoRand()
 	for pos := position.A1; pos <= position.H8; pos++ {
-		m := &Magic{}
+		m := Magic{}
 		m.Mask = genMask(pos) &^ maskCell[pos]
 		m.Shift = 64 - m.Mask.BitCount()
 

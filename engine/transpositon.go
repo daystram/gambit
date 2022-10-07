@@ -31,7 +31,7 @@ type TranspositionTable struct {
 
 type entry struct {
 	typ   EntryType
-	mv    *board.Move
+	mv    board.Move
 	score int32
 	depth uint8
 	hash  uint64
@@ -46,7 +46,7 @@ func NewTranspositionTable(sizeMB uint64) *TranspositionTable {
 	}
 }
 
-func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, score int32, depth, age uint8) {
+func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv board.Move, score int32, depth, age uint8) {
 	hash := b.Hash()
 	index := hash % t.count
 	e := t.table[index]
@@ -64,13 +64,13 @@ func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, 
 	}
 }
 
-func (t *TranspositionTable) Get(b *board.Board, age uint8) (EntryType, *board.Move, int32, uint8, bool) {
+func (t *TranspositionTable) Get(b *board.Board, age uint8) (EntryType, board.Move, int32, uint8, bool) {
 	hash := b.Hash()
 	index := hash % t.count
 	e := t.table[index]
 	if e.typ == EntryTypeUnknown || e.hash != hash || e.age != age {
 		t.misses++
-		return EntryTypeUnknown, nil, 0, 0, false
+		return EntryTypeUnknown, board.Move{}, 0, 0, false
 	}
 	t.hits++
 	return e.typ, e.mv, e.score, e.depth, true

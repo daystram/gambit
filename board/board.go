@@ -79,14 +79,14 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	}, turn, nil
 }
 
-func (b *Board) IsLegal(mv *Move) bool {
+func (b *Board) IsLegal(mv Move) bool {
 	unApply, isLegal := b.Apply(mv)
 	unApply()
 	return isLegal
 }
 
-func (b *Board) GeneratePseudoLegalMoves() []*Move {
-	mvs := make([]*Move, 0, 64)
+func (b *Board) GeneratePseudoLegalMoves() []Move {
+	mvs := make([]Move, 0, 64)
 	theirSide := b.turn.Opposite()
 	sideMask := b.sides[b.turn]
 	nonSelfMask := ^sideMask
@@ -202,7 +202,7 @@ func (b *Board) IsKingChecked(s Side) bool {
 	return c != 0
 }
 
-func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+func (b *Board) generateMovePawn(mvs *[]Move, fromMask, allowedToMask bitmap) {
 	for fromMask != 0 {
 		fromPos := fromMask.LS1B()
 		fromCell := maskCell[fromPos] & fromMask
@@ -240,7 +240,7 @@ func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 			isEnPassant := toCell == b.enPassant
 			isCapture := toCell&b.occupied != 0 || isEnPassant
 			if toCell&(maskRow[0]|maskRow[7]) == 0 {
-				*mvs = append(*mvs, &Move{
+				*mvs = append(*mvs, Move{
 					From:        fromPos,
 					To:          toPos,
 					Piece:       PiecePawn,
@@ -250,7 +250,7 @@ func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 				})
 			} else {
 				for _, prom := range PawnPromoteCandidates {
-					*mvs = append(*mvs, &Move{
+					*mvs = append(*mvs, Move{
 						From:      fromPos,
 						To:        toPos,
 						Piece:     PiecePawn,
@@ -264,7 +264,7 @@ func (b *Board) generateMovePawn(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 	}
 }
 
-func (b *Board) generateMoveKnight(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+func (b *Board) generateMoveKnight(mvs *[]Move, fromMask, allowedToMask bitmap) {
 	for fromMask != 0 {
 		fromPos := fromMask.LS1B()
 		fromMask &= fromMask - 1
@@ -277,7 +277,7 @@ func (b *Board) generateMoveKnight(mvs *[]*Move, fromMask, allowedToMask bitmap)
 			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
-			*mvs = append(*mvs, &Move{
+			*mvs = append(*mvs, Move{
 				From:      fromPos,
 				To:        toPos,
 				Piece:     PieceKnight,
@@ -288,7 +288,7 @@ func (b *Board) generateMoveKnight(mvs *[]*Move, fromMask, allowedToMask bitmap)
 	}
 }
 
-func (b *Board) generateMoveBishop(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+func (b *Board) generateMoveBishop(mvs *[]Move, fromMask, allowedToMask bitmap) {
 	for fromMask != 0 {
 		fromPos := fromMask.LS1B()
 		fromMask &= fromMask - 1
@@ -302,7 +302,7 @@ func (b *Board) generateMoveBishop(mvs *[]*Move, fromMask, allowedToMask bitmap)
 			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
-			*mvs = append(*mvs, &Move{
+			*mvs = append(*mvs, Move{
 				From:      fromPos,
 				To:        toPos,
 				Piece:     PieceBishop,
@@ -313,7 +313,7 @@ func (b *Board) generateMoveBishop(mvs *[]*Move, fromMask, allowedToMask bitmap)
 	}
 }
 
-func (b *Board) generateMoveRook(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+func (b *Board) generateMoveRook(mvs *[]Move, fromMask, allowedToMask bitmap) {
 	for fromMask != 0 {
 		fromPos := fromMask.LS1B()
 		fromMask &= fromMask - 1
@@ -327,7 +327,7 @@ func (b *Board) generateMoveRook(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
-			*mvs = append(*mvs, &Move{
+			*mvs = append(*mvs, Move{
 				From:      fromPos,
 				To:        toPos,
 				Piece:     PieceRook,
@@ -338,7 +338,7 @@ func (b *Board) generateMoveRook(mvs *[]*Move, fromMask, allowedToMask bitmap) {
 	}
 }
 
-func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) {
+func (b *Board) generateMoveQueen(mvs *[]Move, fromMask, allowedToMask bitmap) {
 	for fromMask != 0 {
 		fromPos := fromMask.LS1B()
 		fromMask &= fromMask - 1
@@ -352,7 +352,7 @@ func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) 
 			candidateToBM &= candidateToBM - 1
 
 			isCapture := toCell&b.occupied != 0
-			*mvs = append(*mvs, &Move{
+			*mvs = append(*mvs, Move{
 				From:      fromPos,
 				To:        toPos,
 				Piece:     PieceQueen,
@@ -363,7 +363,7 @@ func (b *Board) generateMoveQueen(mvs *[]*Move, fromMask, allowedToMask bitmap) 
 	}
 }
 
-func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMask bitmap) {
+func (b *Board) generateMoveKing(mvs *[]Move, fromPos position.Pos, allowedToMask bitmap) {
 	candidateToBM := maskKing[fromPos] & allowedToMask
 
 	for candidateToBM != 0 {
@@ -372,7 +372,7 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 		candidateToBM &= candidateToBM - 1
 
 		isCapture := toCell&b.occupied != 0
-		*mvs = append(*mvs, &Move{
+		*mvs = append(*mvs, Move{
 			From:      fromPos,
 			To:        toPos,
 			Piece:     PieceKing,
@@ -382,6 +382,7 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 	}
 }
 
+func (b *Board) generateCastling(mvs *[]Move) {
 	ourSide, theirSide := b.turn, b.turn.Opposite()
 	if b.castleRights.IsSideAllowed(ourSide) {
 		if ourSide == SideWhite {
@@ -390,7 +391,7 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 				if c, _ := b.GetCellAttackers(theirSide, position.C1, 1); c == 0 {
 					if c, _ = b.GetCellAttackers(theirSide, position.D1, 1); c == 0 {
 						jump := posCastling[CastleDirectionWhiteLeft][PieceKing]
-						*mvs = append(*mvs, &Move{
+						*mvs = append(*mvs, Move{
 							From:     jump[0],
 							To:       jump[1],
 							Piece:    PieceKing,
@@ -405,7 +406,7 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 				if c, _ := b.GetCellAttackers(theirSide, position.F1, 1); c == 0 {
 					if c, _ = b.GetCellAttackers(theirSide, position.G1, 1); c == 0 {
 						jump := posCastling[CastleDirectionWhiteRight][PieceKing]
-						*mvs = append(*mvs, &Move{
+						*mvs = append(*mvs, Move{
 							From:     jump[0],
 							To:       jump[1],
 							Piece:    PieceKing,
@@ -421,7 +422,7 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 				if c, _ := b.GetCellAttackers(theirSide, position.C8, 1); c == 0 {
 					if c, _ = b.GetCellAttackers(theirSide, position.D8, 1); c == 0 {
 						jump := posCastling[CastleDirectionBlackLeft][PieceKing]
-						*mvs = append(*mvs, &Move{
+						*mvs = append(*mvs, Move{
 							From:     jump[0],
 							To:       jump[1],
 							Piece:    PieceKing,
@@ -436,7 +437,7 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 				if c, _ := b.GetCellAttackers(theirSide, position.F8, 1); c == 0 {
 					if c, _ = b.GetCellAttackers(theirSide, position.G8, 1); c == 0 {
 						jump := posCastling[CastleDirectionBlackRight][PieceKing]
-						*mvs = append(*mvs, &Move{
+						*mvs = append(*mvs, Move{
 							From:     jump[0],
 							To:       jump[1],
 							Piece:    PieceKing,
@@ -457,21 +458,21 @@ func (b *Board) flip(s Side, p Piece, pos position.Pos) {
 	b.hash ^= zobristConstantPiece[s][p][pos]
 }
 
-func (b *Board) NewMoveFromUCI(notation string) (*Move, error) {
+func (b *Board) NewMoveFromUCI(notation string) (Move, error) {
 	if len(notation) < 4 || len(notation) > 5 {
-		return nil, ErrInvalidMove
+		return Move{}, ErrInvalidMove
 	}
 
 	var err error
-	mv := &Move{}
+	mv := Move{}
 
 	mv.From, err = position.NewPosFromNotation(notation[0:2])
 	if err != nil {
-		return nil, err
+		return Move{}, err
 	}
 	mv.To, err = position.NewPosFromNotation(notation[2:4])
 	if err != nil {
-		return nil, err
+		return Move{}, err
 	}
 	mv.IsTurn, mv.Piece = b.GetSideAndPieces(mv.From)
 	mv.IsEnPassant = mv.Piece == PiecePawn && maskCell[mv.To] == b.enPassant
@@ -560,7 +561,7 @@ func (b *Board) ApplyNull() UnApplyFunc {
 	}
 }
 
-func (b *Board) Apply(mv *Move) (UnApplyFunc, bool) {
+func (b *Board) Apply(mv Move) (UnApplyFunc, bool) {
 	ourTurn, theirTurn := b.turn, b.turn.Opposite()
 	fromPos, toPos, capturedPos := mv.From, mv.To, mv.To
 	fromPiece, toPiece := mv.Piece, mv.Piece

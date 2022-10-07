@@ -20,7 +20,6 @@ const (
 	movetimeEndEarlyThreshold = 0.75
 	nullMoveReduction         = 2
 
-	killerCount    = 2
 	scoreCheckmate = ScoreInfinite - 1
 )
 
@@ -29,21 +28,21 @@ func DefaultLogger(a ...any) {
 }
 
 type PVLine struct {
-	mvs []*board.Move
+	mvs []board.Move
 }
 
-func (pvl *PVLine) GetPV() *board.Move {
+func (pvl *PVLine) GetPV() board.Move {
 	if len(pvl.mvs) == 0 {
-		return nil
+		return board.Move{}
 	}
 	return pvl.mvs[0]
 }
 
-func (pvl *PVLine) Set(mv *board.Move, nextPVL PVLine) {
+func (pvl *PVLine) Set(mv board.Move, nextPVL PVLine) {
 	if pvl == nil {
 		return
 	}
-	pvl.mvs = append([]*board.Move{mv}, nextPVL.mvs...)
+	pvl.mvs = append([]board.Move{mv}, nextPVL.mvs...)
 }
 
 func (pvl *PVLine) Clear() {
@@ -72,7 +71,7 @@ func (pvl *PVLine) String(b *board.Board) string {
 	return DumpHistory(b, pvl.mvs)
 }
 
-func DumpHistory(b *board.Board, mvs []*board.Move) string {
+func DumpHistory(b *board.Board, mvs []board.Move) string {
 	if b == nil || mvs == nil || len(mvs) < 1 {
 		return ""
 	}
@@ -118,7 +117,7 @@ type SearchConfig struct {
 
 type Engine struct {
 	tt      *TranspositionTable
-	killers [MaxDepth][killerCount]*board.Move
+	killers [MaxDepth][2]board.Move
 	clock   *Clock
 
 	currentPly       uint8
@@ -144,21 +143,21 @@ func NewEngine(cfg *EngineConfig) *Engine {
 	}
 }
 
-func (e *Engine) Search(ctx context.Context, b *board.Board, cfg *SearchConfig) (*board.Move, error) {
+func (e *Engine) Search(ctx context.Context, b *board.Board, cfg *SearchConfig) (board.Move, error) {
 	mv, err := e.search(ctx, b, cfg)
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-		return nil, err
+		return board.Move{}, err
 	}
-	if mv == nil {
-		return nil, errors.New("cannot resolve best move")
+	if mv.IsNull() {
+		return board.Move{}, errors.New("cannot resolve best move")
 	}
 
 	return mv, nil
 }
 
-func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) (*board.Move, error) {
+func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) (board.Move, error) {
 	var err error
-	var bestMove *board.Move
+	var bestMove board.Move
 	var bestScore int32
 	e.currentPly = b.Ply()
 	e.currentTurn = b.Turn()
@@ -209,7 +208,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 // TODO: parallelize
 func (e *Engine) negamax(
 	b *board.Board,
-	lastPV *board.Move,
+	lastPV board.Move,
 	pvl *PVLine,
 	depth uint8,
 	alpha, beta int32,
@@ -249,7 +248,7 @@ func (e *Engine) negamax(
 	// null move pruning
 	if !isRoot && depth >= 3 && !isCheck {
 		unApply := b.ApplyNull()
-		score := -e.negamax(b, nil, nil, depth-nullMoveReduction-1, -beta, -(beta - 1), false)
+		score := -e.negamax(b, board.Move{}, nil, depth-nullMoveReduction-1, -beta, -(beta - 1), false)
 		unApply()
 
 		if score >= beta {
@@ -267,7 +266,7 @@ func (e *Engine) negamax(
 	e.scoreMoves(b, lastPV, ttMove, &mvs)
 
 	var moveCount int8
-	var bestMove *board.Move
+	var bestMove board.Move
 	var childPVL PVLine
 	bestScore := -ScoreInfinite
 	for i := 0; i < len(mvs); i++ {
@@ -280,12 +279,10 @@ func (e *Engine) negamax(
 			continue
 		}
 		moveCount++
-
-		unApply := b.Apply(mv)
-		score := -e.negamax(b, nil, &childPVL, depth-1, -beta, -alpha, false)
+		score := -e.negamax(b, board.Move{}, &childPVL, depth-1, -beta, -alpha, false)
 		unApply()
 
-		if score > bestScore || bestMove == nil {
+		if score > bestScore || bestMove.IsNull() {
 			bestMove = mv
 			bestScore = score
 		}
@@ -294,9 +291,7 @@ func (e *Engine) negamax(
 			if depth > 0 && !bestMove.IsCapture {
 				ply := b.Ply()
 				if !bestMove.Equals(e.killers[ply][0]) {
-					for i := killerCount - 1; i >= 1; i-- {
-						e.killers[ply][i] = e.killers[ply][i-1]
-					}
+					e.killers[ply][1] = e.killers[ply][0]
 					e.killers[ply][0] = bestMove
 				}
 			}
@@ -358,7 +353,7 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 
 	mvs := b.GeneratePseudoLegalMoves()
 
-	e.scoreMoves(b, nil, nil, &mvs)
+	e.scoreMoves(b, board.Move{}, board.Move{}, &mvs)
 
 	var childPVL PVLine
 	bestScore := eval

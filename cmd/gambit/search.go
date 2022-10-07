@@ -29,7 +29,7 @@ func search(steps, maxDepth, timeout int) error {
 		Debug: true,
 	}
 
-	getMove := func(ctx context.Context, b *board.Board) *board.Move {
+	getMove := func(ctx context.Context, b *board.Board) board.Move {
 		if b.Turn() == playingSide {
 			mv, err := e.Search(ctx, b, searchCfg)
 			if err != nil {
@@ -44,7 +44,7 @@ func search(steps, maxDepth, timeout int) error {
 	}
 
 	ctx := context.Background()
-	var history []*board.Move
+	var history []board.Move
 	for step := 1; step <= steps; step++ {
 		fmt.Printf("\n=============== Move %d\n", b.FullMoveClock())
 

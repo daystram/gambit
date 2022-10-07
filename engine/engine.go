@@ -46,11 +46,18 @@ func (pvl *PVLine) Set(mv *board.Move, nextPVL PVLine) {
 	pvl.mvs = append([]*board.Move{mv}, nextPVL.mvs...)
 }
 
+func (pvl *PVLine) Clear() {
+	pvl.mvs = pvl.mvs[:0] // memory not released for GC
+}
+
 func (pvl *PVLine) Len() int {
 	return len(pvl.mvs)
 }
 
 func (pvl *PVLine) StringUCI() string {
+	if pvl == nil {
+		return ""
+	}
 	builder := strings.Builder{}
 	for i, mv := range pvl.mvs {
 		_, _ = builder.WriteString(mv.UCI())
@@ -167,7 +174,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 		var candidateScore int32
 		startTime := time.Now()
-		candidateScore = e.negamax(ctx, b, bestMove, &pvl, d, -ScoreInfinite, ScoreInfinite, true)
+		candidateScore = e.negamax(b, bestMove, &pvl, d, -ScoreInfinite, ScoreInfinite, true)
 		elapsedTime := time.Since(startTime)
 
 		if e.clock.DoneByMovetime() {
@@ -201,7 +208,6 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 // For a given board, regardless turn, we always want to maximize alpha.
 // TODO: parallelize
 func (e *Engine) negamax(
-	ctx context.Context,
 	b *board.Board,
 	lastPV *board.Move,
 	pvl *PVLine,
@@ -238,7 +244,7 @@ func (e *Engine) negamax(
 	// null move pruning
 	if !isRoot && depth >= 3 && !isCheck {
 		unApply := b.ApplyNull()
-		score := -e.negamax(ctx, b, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
+		score := -e.negamax(b, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
 		unApply()
 
 		if score >= beta {
@@ -257,7 +263,7 @@ func (e *Engine) negamax(
 
 	var moveCount int8
 	var bestMove *board.Move
-	var bestChildPVL PVLine
+	var childPVL PVLine
 	bestScore := -ScoreInfinite
 	for i := 0; i < len(mvs); i++ {
 		e.sortMoves(&mvs, i)
@@ -267,14 +273,12 @@ func (e *Engine) negamax(
 		}
 		moveCount++
 
-		var childPVL PVLine
 		unApply := b.Apply(mv)
-		score := -e.negamax(ctx, b, nil, &childPVL, depth-1, -beta, -alpha, false)
+		score := -e.negamax(b, nil, &childPVL, depth-1, -beta, -alpha, false)
 		unApply()
 
 		if score > bestScore || bestMove == nil {
 			bestMove = mv
-			bestChildPVL = childPVL
 			bestScore = score
 		}
 		if score >= beta {
@@ -292,11 +296,13 @@ func (e *Engine) negamax(
 		}
 		if score > alpha {
 			alpha = score
+			pvl.Set(mv, childPVL)
 		}
 
 		if e.clock.DoneByMovetime() {
 			break
 		}
+		childPVL.Clear()
 	}
 
 	// no moves were explored, game has terminated
@@ -320,7 +326,6 @@ func (e *Engine) negamax(
 	}
 	e.tt.Set(typ, b, bestMove, bestScore, depth, e.currentPly)
 
-	pvl.Set(bestMove, bestChildPVL)
 	return bestScore
 }
 

@@ -3,6 +3,7 @@ package board
 import (
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/daystram/gambit/position"
 )
@@ -176,12 +177,13 @@ var (
 )
 
 func init() {
+	start := time.Now()
 	fmt.Print("Initializing lookup boards... ")
 	initMask()
 	initZobrist()
 	initMagic(PieceBishop)
 	initMagic(PieceRook)
-	fmt.Println("Done")
+	fmt.Printf("Done (%.3fs)\n", time.Since(start).Seconds())
 }
 
 func initMask() {
@@ -318,7 +320,11 @@ func initMagic(p Piece) {
 		}
 		r.Seed(magicSeeds[pos.Y()])
 		for i := 0; i < size; {
-			m.Magic = bitmap(r.SparseUint64())
+			m.Magic = 0
+			// ensure sparse magic, as seen on https://github.com/official-stockfish/Stockfish
+			for ((m.Magic * m.Mask) >> 56).BitCount() < 6 {
+				m.Magic = bitmap(r.SparseUint64())
+			}
 			m.Attacks = &[4096]bitmap{}
 			for i = 0; i < size; i++ {
 				idx := m.GetIndex(blockers[i])

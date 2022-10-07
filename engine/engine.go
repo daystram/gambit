@@ -244,7 +244,7 @@ func (e *Engine) negamax(
 	// null move pruning
 	if !isRoot && depth >= 3 && !isCheck {
 		unApply := b.ApplyNull()
-		score := -e.negamax(b, nil, nil, depth-nullMoveReduction-1, -beta, -alpha, false)
+		score := -e.negamax(b, nil, nil, depth-nullMoveReduction-1, -beta, -(beta - 1), false)
 		unApply()
 
 		if score >= beta {

@@ -22,7 +22,7 @@ var (
 
 	defaultOptions = options{
 		debug:         false,
-		hashTableSize: engine.DefaultHashTableSize,
+		hashTableSize: engine.DefaultHashTableSizeMB,
 		parallelPerft: false,
 	}
 )
@@ -91,7 +91,7 @@ func (i *Interface) commandUCI(_ context.Context) {
 	i.println(fmt.Sprintf("id name %s %s", EngineName, EngineVersion))
 	i.println(fmt.Sprintf("id author %s", EngineAuthor))
 	i.println(fmt.Sprintf("option name Debug type check default %v", defaultOptions.debug))
-	i.println(fmt.Sprintf("option name Hash type spin default %d min 0 max 16777216", defaultOptions.hashTableSize))
+	i.println(fmt.Sprintf("option name Hash type spin default %d min 0 max 2048", defaultOptions.hashTableSize))
 	i.println("uciok")
 }
 
@@ -115,7 +115,7 @@ func (i *Interface) commandSetOption(_ context.Context, args []string) {
 		i.options.debug = value
 	case "hash":
 		value, err := strconv.ParseUint(valueStr, 10, 64)
-		if err != nil || value > 1<<24 {
+		if err != nil || value > 2048 {
 			return
 		}
 		i.options.hashTableSize = value

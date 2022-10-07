@@ -131,7 +131,7 @@ type Engine struct {
 
 func NewEngine(cfg *EngineConfig) *Engine {
 	if cfg.HashTableSize == 0 {
-		cfg.HashTableSize = DefaultHashTableSize
+		cfg.HashTableSize = DefaultHashTableSizeMB
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = DefaultLogger

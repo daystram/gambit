@@ -1,14 +1,18 @@
 package engine
 
 import (
+	"unsafe"
+
 	"github.com/daystram/gambit/board"
 )
 
 type EntryType uint8
 
 const (
-	DefaultHashTableSize = 1 << 24 // number of entries
+	DefaultHashTableSizeMB = 64 // 64 MB
+)
 
+const (
 	EntryTypeUnknown EntryType = iota
 	EntryTypeExact
 	EntryTypeLowerBound
@@ -16,8 +20,8 @@ const (
 )
 
 type TranspositionTable struct {
-	table []*entry
-	size  uint64
+	table []entry
+	count uint64
 
 	// stats
 	hits   int
@@ -34,20 +38,21 @@ type entry struct {
 	age   uint8
 }
 
-func NewTranspositionTable(size uint64) *TranspositionTable {
+func NewTranspositionTable(sizeMB uint64) *TranspositionTable {
+	count := sizeMB * 1e6 / uint64(unsafe.Sizeof(entry{}))
 	return &TranspositionTable{
-		table: make([]*entry, size),
-		size:  size,
+		table: make([]entry, count),
+		count: count,
 	}
 }
 
 func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, score int32, depth, age uint8) {
 	hash := b.Hash()
-	index := hash % t.size
+	index := hash % t.count
 	e := t.table[index]
-	if e == nil || e.age != age || e.depth <= depth {
+	if e.typ == EntryTypeUnknown || e.age != age || e.depth <= depth {
 		t.writes++
-		t.table[index] = &entry{
+		t.table[index] = entry{
 			typ:   typ,
 			mv:    mv,
 			score: score,
@@ -61,9 +66,9 @@ func (t *TranspositionTable) Set(typ EntryType, b *board.Board, mv *board.Move, 
 
 func (t *TranspositionTable) Get(b *board.Board, age uint8) (EntryType, *board.Move, int32, uint8, bool) {
 	hash := b.Hash()
-	index := hash % t.size
+	index := hash % t.count
 	e := t.table[index]
-	if e == nil || e.hash != hash || e.age != age {
+	if e.typ == EntryTypeUnknown || e.hash != hash || e.age != age {
 		t.misses++
 		return EntryTypeUnknown, nil, 0, 0, false
 	}

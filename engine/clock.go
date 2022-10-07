@@ -15,11 +15,11 @@ const (
 	MaxDepth    uint8 = 255
 	MaxNodes          = math.MaxUint32
 
-	minMovetime = 350 * time.Millisecond
+	minMovetime = 500 * time.Millisecond
 
 	expectedGameMoves         uint8 = 40
 	movetimeAccumulationRatio       = 0.8
-	movetimeMargin                  = 100 * time.Millisecond
+	movetimeMargin                  = 200 * time.Millisecond
 )
 
 type ClockMode uint8

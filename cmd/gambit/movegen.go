@@ -22,10 +22,11 @@ func movegen(fen string, draw bool) error {
 
 	if draw {
 		for _, mv := range b.GeneratePseudoLegalMoves() {
-			if !b.IsLegal(mv) {
+			unApply, ok := b.Apply(mv)
+			if !ok {
+				unApply()
 				continue
 			}
-			unApply := b.Apply(mv)
 			fmt.Println(mv)
 			fmt.Println(b.Draw())
 			fmt.Println(b.FEN())

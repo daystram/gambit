@@ -80,50 +80,9 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 }
 
 func (b *Board) IsLegal(mv *Move) bool {
-	var c uint8
-	ourSide, theirSide := b.turn, b.turn.Opposite()
-
-	// check if move leaves our King in check
-	unApply := b.Apply(mv)
-	c, _ = b.GetCellAttackers(theirSide, b.GetBitmap(ourSide, PieceKing).LS1B(), 1)
+	unApply, isLegal := b.Apply(mv)
 	unApply()
-	if c != 0 {
-		return false
-	}
-
-	// check if cells between castling is attacked
-	switch mv.IsCastle {
-	case CastleDirectionWhiteLeft:
-		if c, _ = b.GetCellAttackers(theirSide, position.C1, 1); c != 0 {
-			return false
-		}
-		if c, _ = b.GetCellAttackers(theirSide, position.D1, 1); c != 0 {
-			return false
-		}
-	case CastleDirectionWhiteRight:
-		if c, _ = b.GetCellAttackers(theirSide, position.F1, 1); c != 0 {
-			return false
-		}
-		if c, _ = b.GetCellAttackers(theirSide, position.G1, 1); c != 0 {
-			return false
-		}
-	case CastleDirectionBlackLeft:
-		if c, _ = b.GetCellAttackers(theirSide, position.C8, 1); c != 0 {
-			return false
-		}
-		if c, _ = b.GetCellAttackers(theirSide, position.D8, 1); c != 0 {
-			return false
-		}
-	case CastleDirectionBlackRight:
-		if c, _ = b.GetCellAttackers(theirSide, position.F8, 1); c != 0 {
-			return false
-		}
-		if c, _ = b.GetCellAttackers(theirSide, position.G8, 1); c != 0 {
-			return false
-		}
-	}
-
-	return true
+	return isLegal
 }
 
 func (b *Board) GeneratePseudoLegalMoves() []*Move {
@@ -423,53 +382,69 @@ func (b *Board) generateMoveKing(mvs *[]*Move, fromPos position.Pos, allowedToMa
 	}
 }
 
-func (b *Board) generateCastling(mvs *[]*Move) {
-	if b.castleRights.IsSideAllowed(b.turn) {
-		if b.turn == SideWhite {
+	ourSide, theirSide := b.turn, b.turn.Opposite()
+	if b.castleRights.IsSideAllowed(ourSide) {
+		if ourSide == SideWhite {
 			if b.castleRights.IsAllowed(CastleDirectionWhiteLeft) &&
 				b.occupied&maskCastling[CastleDirectionWhiteLeft] == 0 {
-				jump := posCastling[CastleDirectionWhiteLeft][PieceKing]
-				*mvs = append(*mvs, &Move{
-					From:     jump[0],
-					To:       jump[1],
-					Piece:    PieceKing,
-					IsTurn:   b.turn,
-					IsCastle: CastleDirectionWhiteLeft,
-				})
+				if c, _ := b.GetCellAttackers(theirSide, position.C1, 1); c == 0 {
+					if c, _ = b.GetCellAttackers(theirSide, position.D1, 1); c == 0 {
+						jump := posCastling[CastleDirectionWhiteLeft][PieceKing]
+						*mvs = append(*mvs, &Move{
+							From:     jump[0],
+							To:       jump[1],
+							Piece:    PieceKing,
+							IsTurn:   ourSide,
+							IsCastle: CastleDirectionWhiteLeft,
+						})
+					}
+				}
 			}
 			if b.castleRights.IsAllowed(CastleDirectionWhiteRight) &&
 				b.occupied&maskCastling[CastleDirectionWhiteRight] == 0 {
-				jump := posCastling[CastleDirectionWhiteRight][PieceKing]
-				*mvs = append(*mvs, &Move{
-					From:     jump[0],
-					To:       jump[1],
-					Piece:    PieceKing,
-					IsTurn:   b.turn,
-					IsCastle: CastleDirectionWhiteRight,
-				})
+				if c, _ := b.GetCellAttackers(theirSide, position.F1, 1); c == 0 {
+					if c, _ = b.GetCellAttackers(theirSide, position.G1, 1); c == 0 {
+						jump := posCastling[CastleDirectionWhiteRight][PieceKing]
+						*mvs = append(*mvs, &Move{
+							From:     jump[0],
+							To:       jump[1],
+							Piece:    PieceKing,
+							IsTurn:   ourSide,
+							IsCastle: CastleDirectionWhiteRight,
+						})
+					}
+				}
 			}
 		} else {
 			if b.castleRights.IsAllowed(CastleDirectionBlackLeft) &&
 				b.occupied&maskCastling[CastleDirectionBlackLeft] == 0 {
-				jump := posCastling[CastleDirectionBlackLeft][PieceKing]
-				*mvs = append(*mvs, &Move{
-					From:     jump[0],
-					To:       jump[1],
-					Piece:    PieceKing,
-					IsTurn:   b.turn,
-					IsCastle: CastleDirectionBlackLeft,
-				})
+				if c, _ := b.GetCellAttackers(theirSide, position.C8, 1); c == 0 {
+					if c, _ = b.GetCellAttackers(theirSide, position.D8, 1); c == 0 {
+						jump := posCastling[CastleDirectionBlackLeft][PieceKing]
+						*mvs = append(*mvs, &Move{
+							From:     jump[0],
+							To:       jump[1],
+							Piece:    PieceKing,
+							IsTurn:   ourSide,
+							IsCastle: CastleDirectionBlackLeft,
+						})
+					}
+				}
 			}
 			if b.castleRights.IsAllowed(CastleDirectionBlackRight) &&
 				b.occupied&maskCastling[CastleDirectionBlackRight] == 0 {
-				jump := posCastling[CastleDirectionBlackRight][PieceKing]
-				*mvs = append(*mvs, &Move{
-					From:     jump[0],
-					To:       jump[1],
-					Piece:    PieceKing,
-					IsTurn:   b.turn,
-					IsCastle: CastleDirectionBlackRight,
-				})
+				if c, _ := b.GetCellAttackers(theirSide, position.F8, 1); c == 0 {
+					if c, _ = b.GetCellAttackers(theirSide, position.G8, 1); c == 0 {
+						jump := posCastling[CastleDirectionBlackRight][PieceKing]
+						*mvs = append(*mvs, &Move{
+							From:     jump[0],
+							To:       jump[1],
+							Piece:    PieceKing,
+							IsTurn:   ourSide,
+							IsCastle: CastleDirectionBlackRight,
+						})
+					}
+				}
 			}
 		}
 	}
@@ -585,7 +560,7 @@ func (b *Board) ApplyNull() UnApplyFunc {
 	}
 }
 
-func (b *Board) Apply(mv *Move) UnApplyFunc {
+func (b *Board) Apply(mv *Move) (UnApplyFunc, bool) {
 	ourTurn, theirTurn := b.turn, b.turn.Opposite()
 	fromPos, toPos, capturedPos := mv.From, mv.To, mv.To
 	fromPiece, toPiece := mv.Piece, mv.Piece
@@ -795,7 +770,7 @@ func (b *Board) Apply(mv *Move) UnApplyFunc {
 
 		// revert cache
 		b.state = prevState
-	}
+	}, !b.IsKingChecked(ourTurn)
 }
 
 func (b *Board) GetBitmap(s Side, p Piece) bitmap {

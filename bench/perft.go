@@ -49,12 +49,12 @@ func runPerft(b *board.Board, d int, root, verbose bool, out chan string, nodes,
 
 	var sum uint64
 	for _, mv := range b.GeneratePseudoLegalMoves() {
-		if !b.IsLegal(mv) {
+		var child uint64
+		unApply, ok := b.Apply(mv)
+		if !ok {
+			unApply()
 			continue
 		}
-
-		var child uint64
-		unapply := b.Apply(mv)
 
 		if d != 2 {
 			child = runPerft(b, d-1, false, verbose, out, nodes, cap, enp, cas, pro, chk)
@@ -87,7 +87,7 @@ func runPerft(b *board.Board, d int, root, verbose bool, out chan string, nodes,
 		}
 		sum += child
 
-		unapply()
+		unApply()
 	}
 	return sum
 }

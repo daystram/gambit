@@ -273,7 +273,10 @@ func (e *Engine) negamax(
 	for i := 0; i < len(mvs); i++ {
 		e.sortMoves(&mvs, i)
 		mv := mvs[i]
-		if !b.IsLegal(mv) {
+
+		unApply, ok := b.Apply(mv)
+		if !ok {
+			unApply()
 			continue
 		}
 		moveCount++
@@ -362,11 +365,15 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 	for i := 0; i < len(mvs); i++ {
 		e.sortMoves(&mvs, i)
 		mv := mvs[i]
-		if (!isCheck && !mv.IsCapture) || !b.IsLegal(mv) {
+		if !isCheck && !mv.IsCapture {
 			continue
 		}
 
-		unApply := b.Apply(mv)
+		unApply, ok := b.Apply(mv)
+		if !ok {
+			unApply()
+			continue
+		}
 		score := -e.quiescence(b, &childPVL, -beta, -alpha)
 		unApply()
 

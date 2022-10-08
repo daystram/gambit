@@ -21,13 +21,11 @@ var (
 	scoreKiller uint8 = 10
 )
 
-func (e *Engine) scoreMoves(b *board.Board, pvMove, hashMove board.Move, mvs *[]board.Move) {
+func (e *Engine) scoreMoves(b *board.Board, pvMove board.Move, mvs *[]board.Move) {
 	for i, mv := range *mvs {
 		var score uint8
 		if mv.Equals(pvMove) {
 			score = offsetPV
-		} else if mv.Equals(hashMove) {
-			score = offsetPV - 1
 		} else if mv.IsCapture {
 			capturedPiece, _ := b.GetSideAndPieces(mv.To)
 			score = offsetMVVLVA + scoreMVVLVA[mv.Piece][capturedPiece]

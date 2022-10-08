@@ -172,7 +172,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 		var candidateScore int32
 		startTime := time.Now()
-		candidateScore = e.negamax(b, bestMove, &pvl, d, 0, -ScoreInfinite, ScoreInfinite)
+		candidateScore = e.negamax(b, board.Move{}, &pvl, d, 0, -ScoreInfinite, ScoreInfinite)
 		elapsedTime := time.Since(startTime)
 
 		if e.clock.DoneByMovetime() {
@@ -207,7 +207,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 // TODO: parallelize
 func (e *Engine) negamax(
 	b *board.Board,
-	lastPV board.Move,
+	prevMove board.Move,
 	pvl *PVLine,
 	depth, dist uint8,
 	alpha, beta int32,
@@ -262,7 +262,7 @@ func (e *Engine) negamax(
 	mvs := b.GeneratePseudoLegalMoves()
 
 	// assign score to moves
-	e.scoreMoves(b, lastPV, ttMove, &mvs)
+	e.scoreMoves(b, ttMove, &mvs)
 
 	var moveCount int8
 	var bestMove board.Move
@@ -279,7 +279,7 @@ func (e *Engine) negamax(
 			continue
 		}
 		moveCount++
-		score := -e.negamax(b, board.Move{}, &childPVL, depth-1, dist+1, -beta, -alpha)
+		score := -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
 		unApply()
 
 		if score > bestScore || bestMove.IsNull() {
@@ -347,7 +347,7 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 
 	mvs := b.GeneratePseudoLegalMoves()
 
-	e.scoreMoves(b, board.Move{}, board.Move{}, &mvs)
+	e.scoreMoves(b, board.Move{}, &mvs)
 
 	var childPVL PVLine
 	bestScore := eval

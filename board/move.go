@@ -23,6 +23,7 @@ func (mv Move) IsNull() bool {
 func (mv Move) Equals(other Move) bool {
 	return mv.From == other.From &&
 		mv.To == other.To &&
+		mv.Piece == other.Piece &&
 		mv.IsTurn == other.IsTurn &&
 		mv.IsCapture == other.IsCapture &&
 		mv.IsCastle == other.IsCastle &&

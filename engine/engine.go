@@ -232,12 +232,13 @@ func (e *Engine) negamax(
 		case EntryTypeExact:
 			return ttScore
 		case EntryTypeLowerBound:
-			alpha = max(alpha, ttScore)
+			if ttScore <= alpha {
+				return alpha
+			}
 		case EntryTypeUpperBound:
-			beta = min(beta, ttScore)
-		}
-		if alpha >= beta {
-			return ttScore
+			if ttScore >= beta {
+				return beta
+			}
 		}
 	}
 
@@ -403,13 +404,6 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 	}
 
 	return bestScore
-}
-
-func min[T constraints.Ordered](x1, x2 T) T {
-	if x1 < x2 {
-		return x1
-	}
-	return x2
 }
 
 func max[T constraints.Ordered](x1, x2 T) T {

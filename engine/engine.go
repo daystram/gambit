@@ -17,8 +17,10 @@ import (
 const (
 	ScoreInfinite int32 = math.MaxInt32
 
-	movetimeEndEarlyThreshold = 0.75
-	nullMoveReduction         = 2
+	movetimeEndEarlyThreshold   = 0.75
+	nullMoveReduction           = 2
+	lateMoveReductionFullMoves  = 4
+	lateMoveReductionDepthLimit = 3
 
 	scoreCheckmate = ScoreInfinite - 1
 )
@@ -243,11 +245,12 @@ func (e *Engine) negamax(
 	}
 
 	isCheck := b.IsKingChecked(b.Turn())
+	isPVNode := beta-alpha > 1
 
 	// null move pruning
-	if !isRoot && depth >= 3 && !isCheck {
+	if !isCheck && !isRoot && depth >= 3 {
 		unApply := b.ApplyNull()
-		score := -e.negamax(b, board.Move{}, nil, depth-nullMoveReduction-1, dist+nullMoveReduction+1, -beta, -(beta - 1))
+		score := -e.negamax(b, board.Move{}, nil, depth-(nullMoveReduction+1), dist+(nullMoveReduction+1), -beta, -(beta - 1))
 		unApply()
 
 		if score >= beta {
@@ -279,7 +282,26 @@ func (e *Engine) negamax(
 			continue
 		}
 		moveCount++
-		score := -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
+		var score int32
+		if moveCount == 0 {
+			score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
+		} else {
+			// late move reduction
+			if !isPVNode && !isCheck && !prevMove.IsCapture && prevMove.IsPromote == board.PieceUnknown &&
+				moveCount >= lateMoveReductionFullMoves && depth >= lateMoveReductionDepthLimit {
+				reduction := uint8(1)
+				if moveCount > 6 {
+					reduction = depth / 3
+				}
+				score = -e.negamax(b, mv, &childPVL, depth-(reduction+1), dist+(reduction+1), -(alpha + 1), -alpha)
+				if score > alpha {
+					// re-search at full depth
+					score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
+				}
+			} else {
+				score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
+			}
+		}
 		unApply()
 
 		if score > bestScore || bestMove.IsNull() {

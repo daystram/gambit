@@ -29,7 +29,7 @@ var (
 
 type options struct {
 	debug         bool
-	hashTableSize uint64
+	hashTableSize uint32
 	parallelPerft bool
 }
 
@@ -114,11 +114,11 @@ func (i *Interface) commandSetOption(_ context.Context, args []string) {
 		}
 		i.options.debug = value
 	case "hash":
-		value, err := strconv.ParseUint(valueStr, 10, 64)
-		if err != nil || value > 2048 {
+		value, err := strconv.ParseUint(valueStr, 10, 32)
+		if err != nil || value > 4096 {
 			return
 		}
-		i.options.hashTableSize = value
+		i.options.hashTableSize = uint32(value)
 	case "parallelperft":
 		value, err := strconv.ParseBool(valueStr)
 		if err != nil {

@@ -108,7 +108,7 @@ func DumpHistory(b *board.Board, mvs []board.Move) string {
 }
 
 type EngineConfig struct {
-	HashTableSize uint64
+	HashTableSize uint32
 	Logger        func(...any)
 }
 
@@ -131,9 +131,6 @@ type Engine struct {
 }
 
 func NewEngine(cfg *EngineConfig) *Engine {
-	if cfg.HashTableSize == 0 {
-		cfg.HashTableSize = DefaultHashTableSizeMB
-	}
 	if cfg.Logger == nil {
 		cfg.Logger = DefaultLogger
 	}

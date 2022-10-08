@@ -35,7 +35,6 @@ func search(steps, maxDepth, timeout int) error {
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println(e.TranspositionStats())
 			return mv
 		} else {
 			mvs := b.GeneratePseudoLegalMoves()

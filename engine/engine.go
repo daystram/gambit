@@ -168,12 +168,11 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 	for d := uint8(1); !e.clock.DoneByDepth(d); d++ {
 		e.nodes = 0
-		e.tt.ResetStats()
 		pvl := PVLine{}
 
 		var candidateScore int32
 		startTime := time.Now()
-		candidateScore = e.negamax(b, bestMove, &pvl, d, -ScoreInfinite, ScoreInfinite, true)
+		candidateScore = e.negamax(b, bestMove, &pvl, d, 0, -ScoreInfinite, ScoreInfinite)
 		elapsedTime := time.Since(startTime)
 
 		if e.clock.DoneByMovetime() {
@@ -210,12 +209,10 @@ func (e *Engine) negamax(
 	b *board.Board,
 	lastPV board.Move,
 	pvl *PVLine,
-	depth uint8,
+	depth, dist uint8,
 	alpha, beta int32,
-	isRoot bool,
 ) int32 {
 	e.nodes++
-	initialAlpha := alpha
 
 	// check if movetime exceeded
 	if e.clock.DoneByMovetime() {
@@ -227,10 +224,12 @@ func (e *Engine) negamax(
 		return e.quiescence(b, pvl, alpha, beta)
 	}
 
+	isRoot := dist == 0
+
 	// check from TranspositionTable
-	typ, ttMove, ttScore, ttDepth, ok := e.tt.Get(b, e.currentPly)
+	ttType, ttMove, ttScore, ttDepth, ok := e.tt.Get(b, e.currentPly)
 	if !isRoot && !ok && ttDepth >= depth {
-		switch typ {
+		switch ttType {
 		case EntryTypeExact:
 			return ttScore
 		case EntryTypeLowerBound:
@@ -248,7 +247,7 @@ func (e *Engine) negamax(
 	// null move pruning
 	if !isRoot && depth >= 3 && !isCheck {
 		unApply := b.ApplyNull()
-		score := -e.negamax(b, board.Move{}, nil, depth-nullMoveReduction-1, -beta, -(beta - 1), false)
+		score := -e.negamax(b, board.Move{}, nil, depth-nullMoveReduction-1, dist+nullMoveReduction+1, -beta, -(beta - 1))
 		unApply()
 
 		if score >= beta {
@@ -269,6 +268,7 @@ func (e *Engine) negamax(
 	var bestMove board.Move
 	var childPVL PVLine
 	bestScore := -ScoreInfinite
+	ttType = EntryTypeLowerBound
 	for i := 0; i < len(mvs); i++ {
 		e.sortMoves(&mvs, i)
 		mv := mvs[i]
@@ -279,7 +279,7 @@ func (e *Engine) negamax(
 			continue
 		}
 		moveCount++
-		score := -e.negamax(b, board.Move{}, &childPVL, depth-1, -beta, -alpha, false)
+		score := -e.negamax(b, board.Move{}, &childPVL, depth-1, dist+1, -beta, -alpha)
 		unApply()
 
 		if score > bestScore || bestMove.IsNull() {
@@ -295,11 +295,13 @@ func (e *Engine) negamax(
 					e.killers[ply][0] = bestMove
 				}
 			}
+			ttType = EntryTypeUpperBound
 			break // fail-hard cutoff
 		}
 		if score > alpha {
 			alpha = score
 			pvl.Set(mv, childPVL)
+			ttType = EntryTypeExact
 		}
 
 		if e.clock.DoneByMovetime() {
@@ -319,15 +321,7 @@ func (e *Engine) negamax(
 	}
 
 	// set TranspositionTable
-	switch {
-	case bestScore <= initialAlpha:
-		typ = EntryTypeLowerBound
-	case bestScore >= beta:
-		typ = EntryTypeUpperBound
-	default:
-		typ = EntryTypeExact
-	}
-	e.tt.Set(typ, b, bestMove, bestScore, depth, e.currentPly)
+	e.tt.Set(b, e.currentPly, ttType, bestMove, bestScore, depth)
 
 	return bestScore
 }
@@ -390,11 +384,6 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 	}
 
 	return bestScore
-}
-
-func (e *Engine) TranspositionStats() string {
-	h, m, w := e.tt.Stats()
-	return fmt.Sprintf("hits=%d misses=%d writes=%d", h, m, w)
 }
 
 func min[T constraints.Ordered](x1, x2 T) T {

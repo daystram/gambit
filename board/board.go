@@ -508,6 +508,7 @@ type UnApplyFunc func()
 
 func (b *Board) ApplyNull() UnApplyFunc {
 	ourTurn, oppTurn := b.turn, b.turn.Opposite()
+	prevHash := b.hash
 
 	// disable enpassant
 	prevEnPassant := b.enPassant
@@ -537,9 +538,7 @@ func (b *Board) ApplyNull() UnApplyFunc {
 
 	return func() {
 		// revert enpassant
-		b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
 		b.enPassant = prevEnPassant
-		b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
 
 		// revert half move clock
 		b.halfMoveClock = prevHalfMoveClock
@@ -554,10 +553,12 @@ func (b *Board) ApplyNull() UnApplyFunc {
 
 		// revert turn
 		b.turn = ourTurn
-		b.hash ^= zobristConstantSideWhite
 
 		// revert state cache
 		b.state = prevState
+
+		// revert hash
+		b.hash = prevHash
 	}
 }
 
@@ -567,6 +568,7 @@ func (b *Board) Apply(mv Move) (UnApplyFunc, bool) {
 	fromPiece, toPiece := mv.Piece, mv.Piece
 	_, capturedPiece := b.GetSideAndPieces(mv.To)
 	isCapture, isCastle := mv.IsCapture, mv.IsCastle
+	prevHash := b.hash
 
 	if isCastle != CastleDirectionUnknown {
 		// perform castling
@@ -745,14 +747,10 @@ func (b *Board) Apply(mv Move) (UnApplyFunc, bool) {
 		}
 
 		// revert enPassant
-		b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
 		b.enPassant = prevEnPassant
-		b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
 
 		// revert castleRights
-		b.hash ^= zobristConstantCastleRights[b.castleRights]
 		b.castleRights = prevCastleRights
-		b.hash ^= zobristConstantCastleRights[b.castleRights]
 
 		// revert half move clock
 		b.halfMoveClock = prevHalfMoveClock
@@ -771,6 +769,9 @@ func (b *Board) Apply(mv Move) (UnApplyFunc, bool) {
 
 		// revert cache
 		b.state = prevState
+
+		// revert hash
+		b.hash = prevHash
 	}, !b.IsKingChecked(ourTurn)
 }
 

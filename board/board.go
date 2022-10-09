@@ -61,7 +61,19 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 	for _, f := range opts {
 		f(cfg)
 	}
-	sides, pieces, cells, materialValue, positionValueMG, positionValueEG, castleRights, enPassant, halfMoveClock, fullMoveClock, turn, err := parseFEN(cfg.fen)
+	sides,
+		pieces,
+		cells,
+		materialValue,
+		positionValueMG,
+		positionValueEG,
+		castleRights,
+		enPassant,
+		halfMoveClock,
+		fullMoveClock,
+		turn,
+		hash,
+		err := parseFEN(cfg.fen)
 	if err != nil {
 		return nil, SideUnknown, err
 	}
@@ -82,7 +94,7 @@ func NewBoard(opts ...BoardOption) (*Board, Side, error) {
 		ply:             0,
 		state:           StateUnknown,
 		turn:            turn,
-		hash:            0, // TODO: need to calc hash on non-startpos starting states?
+		hash:            hash,
 	}, turn, nil
 }
 

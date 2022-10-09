@@ -69,13 +69,15 @@ func (e *Engine) Evaluate(b *board.Board) int32 {
 	)
 
 	materialWhite, materialBlack := b.GetMaterialValue()
-	positionWhite, positionBlack := b.GetPositionValue()
+	positionWhiteMG, positionBlackMG, positionWhiteEG, positionBlackEG := b.GetPositionValue()
+	phaseMG := int32(max(b.Phase(), 0))
+	phaseEG := int32(board.PhaseTotal) - phaseMG
 	if ourTurn == board.SideWhite {
 		material = materialWhite - materialBlack
-		position = positionWhite - positionBlack
+		position = ((positionWhiteMG-positionBlackMG)*phaseMG + (positionWhiteEG-positionBlackEG)*phaseEG) / int32(board.PhaseTotal)
 	} else {
 		material = materialBlack - materialWhite
-		position = positionBlack - positionWhite
+		position = ((positionBlackMG-positionWhiteMG)*phaseMG + (positionBlackEG-positionWhiteEG)*phaseEG) / int32(board.PhaseTotal)
 	}
 
 	if ourTurn == e.currentTurn {

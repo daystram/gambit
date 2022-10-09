@@ -17,10 +17,12 @@ import (
 const (
 	ScoreInfinite int32 = math.MaxInt32
 
-	movetimeEndEarlyThreshold   = 0.75
-	nullMoveReduction           = 2
-	lateMoveReductionFullMoves  = 4
-	lateMoveReductionDepthLimit = 3
+	clockTimePVConsistencyDecay       = 0.95 // more reduction with decay towards 0
+	clockTimeScoreConsistencyMaxDecay = 0.95
+	clockTimeScoreConsistencyWindow   = 0.75
+	nullMoveReduction                 = 2
+	lateMoveReductionFullMoves        = 4
+	lateMoveReductionDepthLimit       = 3
 
 	scoreCheckmate = ScoreInfinite - 1
 )
@@ -156,13 +158,14 @@ func (e *Engine) Search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) (board.Move, error) {
 	var err error
-	var bestMove board.Move
-	var bestScore int32
+	var bestMove, prevMove board.Move
+	var bestScore, prevScore int32
 	var pvl PVLine
 	e.currentPly = b.Ply()
 	e.currentTurn = b.Turn()
 	e.nodes = 0
 	e.elapsedTime = 0
+	timeDecay := float64(1)
 
 	e.clock.Start(ctx, b.Turn(), b.FullMoveClock(), &cfg.ClockConfig)
 
@@ -187,11 +190,27 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 				d, formatScoreUCI(bestScore, pvl), e.elapsedTime.Milliseconds(), e.nodes, float64(e.nodes)/((e.elapsedTime + 1).Seconds()), pvl.StringUCI()))
 		}
 
-		if bestScore == scoreCheckmate || bestScore == -scoreCheckmate ||
-			(e.clock.Mode() == ClockModeGametime && e.elapsedTime.Seconds() > e.clock.AllocatedMovetime().Seconds()*movetimeEndEarlyThreshold) {
+		if bestScore == scoreCheckmate || bestScore == -scoreCheckmate {
 			break
 		}
+		if d > 1 && e.clock.Mode() == ClockModeGametime {
+			if prevMove.Equals(bestMove) {
+				timeDecay *= clockTimePVConsistencyDecay // carry decay from previous iteration
+			} else {
+				timeDecay = 1 // reset decay factor
+			}
+			timeDecay *= min(max(
+				float64(abs(prevScore-bestScore))/float64(max(abs(prevScore), 1))/clockTimeScoreConsistencyWindow,
+				clockTimeScoreConsistencyMaxDecay,
+			), 1)
+			// TODO: measure decay by complexity
+			if e.elapsedTime.Seconds() > e.clock.allocatedMovetime.Seconds()*timeDecay {
+				break
+			}
+		}
 		pvl.Clear()
+		prevMove = bestMove
+		prevScore = bestScore
 	}
 
 	e.clock.Stop()
@@ -426,6 +445,20 @@ func max[T constraints.Ordered](x1, x2 T) T {
 		return x1
 	}
 	return x2
+}
+
+func min[T constraints.Ordered](x1, x2 T) T {
+	if x1 < x2 {
+		return x1
+	}
+	return x2
+}
+
+func abs[T constraints.Signed](x T) T {
+	if x < 0 {
+		return x * -1
+	}
+	return x
 }
 
 func formatScoreDebug(s int32, pvl PVLine) string {

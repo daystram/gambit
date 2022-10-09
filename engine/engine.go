@@ -118,9 +118,10 @@ type SearchConfig struct {
 }
 
 type Engine struct {
-	tt      *TranspositionTable
-	killers [MaxDepth][2]board.Move
-	clock   *Clock
+	tt           *TranspositionTable
+	killers      [MaxDepth][2]board.Move
+	boardHistory [1024]uint64
+	clock        *Clock
 
 	currentPly       uint8
 	currentTurn      board.Side
@@ -158,6 +159,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 	var err error
 	var bestMove board.Move
 	var bestScore int32
+	var pvl PVLine
 	e.currentPly = b.Ply()
 	e.currentTurn = b.Turn()
 	e.totalNodes = 0
@@ -167,11 +169,9 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 
 	for d := uint8(1); !e.clock.DoneByDepth(d); d++ {
 		e.nodes = 0
-		pvl := PVLine{}
 
-		var candidateScore int32
 		startTime := time.Now()
-		candidateScore = e.negamax(b, board.Move{}, &pvl, d, 0, -ScoreInfinite, ScoreInfinite)
+		candidateScore := e.negamax(b, board.Move{}, &pvl, d, 0, -ScoreInfinite, ScoreInfinite)
 		elapsedTime := time.Since(startTime)
 
 		if e.clock.DoneByMovetime() {
@@ -196,6 +196,7 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 			(e.clock.Mode() == ClockModeGametime && e.totalElapsedTime.Seconds() > e.clock.AllocatedMovetime().Seconds()*movetimeEndEarlyThreshold) {
 			break
 		}
+		pvl.Clear()
 	}
 
 	e.clock.Stop()
@@ -223,6 +224,11 @@ func (e *Engine) negamax(
 		return e.quiescence(b, pvl, alpha, beta)
 	}
 
+	// check if repeated
+	if e.isBoardRepeated(b) {
+		return 0
+	}
+
 	isRoot := dist == 0
 
 	// check from TranspositionTable
@@ -248,6 +254,7 @@ func (e *Engine) negamax(
 	// null move pruning
 	if !isCheck && !isRoot && depth >= 3 {
 		unApply := b.ApplyNull()
+		e.boardHistory[b.Ply()] = b.Hash()
 		score := -e.negamax(b, board.Move{}, nil, depth-(nullMoveReduction+1), dist+(nullMoveReduction+1), -beta, -(beta - 1))
 		unApply()
 
@@ -280,6 +287,7 @@ func (e *Engine) negamax(
 			continue
 		}
 		moveCount++
+		e.boardHistory[b.Ply()] = b.Hash()
 		var score int32
 		if moveCount == 1 {
 			score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
@@ -302,7 +310,7 @@ func (e *Engine) negamax(
 		}
 		unApply()
 
-		if score > bestScore || bestMove.IsNull() {
+		if score > bestScore {
 			bestMove = mv
 			bestScore = score
 		}
@@ -404,6 +412,18 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 	}
 
 	return bestScore
+}
+
+func (e *Engine) isBoardRepeated(b *board.Board) bool {
+	count := 0
+	for ply := uint8(1); ply < b.Ply(); ply++ {
+		if e.boardHistory[ply] == b.Hash() {
+			if count++; count >= 2 {
+				return true // TODO: try strict repetition check on first match?
+			}
+		}
+	}
+	return false
 }
 
 func max[T constraints.Ordered](x1, x2 T) T {

@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	scoreTempoBonus int32 = 50
+	scoreTempoBonus int32 = 20
 
 	offsetPV     uint8 = 255
 	offsetMVVLVA uint8 = offsetPV - 64

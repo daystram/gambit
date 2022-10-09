@@ -281,7 +281,7 @@ func (e *Engine) negamax(
 		}
 		moveCount++
 		var score int32
-		if moveCount == 0 {
+		if moveCount == 1 {
 			score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
 		} else {
 			// late move reduction

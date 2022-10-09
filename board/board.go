@@ -36,7 +36,7 @@ type Board struct {
 	castleRights  CastleRights
 	halfMoveClock uint8
 	fullMoveClock uint8
-	ply           uint8
+	ply           uint16
 	state         State
 	turn          Side
 	hash          uint64
@@ -917,7 +917,7 @@ func (b *Board) Turn() Side {
 	return b.turn
 }
 
-func (b *Board) Ply() uint8 {
+func (b *Board) Ply() uint16 {
 	return b.ply
 }
 

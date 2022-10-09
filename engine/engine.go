@@ -123,7 +123,7 @@ type Engine struct {
 	boardHistory [1024]uint64
 	clock        *Clock
 
-	currentPly  uint8
+	currentPly  uint16
 	currentTurn board.Side
 	nodes       uint32
 	elapsedTime time.Duration
@@ -220,7 +220,7 @@ func (e *Engine) negamax(
 	}
 
 	// check if repeated
-	if e.isBoardRepeated(b) {
+	if e.isBoardRepeated(b, dist) {
 		return 0
 	}
 
@@ -249,7 +249,7 @@ func (e *Engine) negamax(
 	// null move pruning
 	if !isCheck && !isRoot && depth >= 3 {
 		unApply := b.ApplyNull()
-		e.boardHistory[b.Ply()] = b.Hash()
+		e.boardHistory[dist] = b.Hash()
 		score := -e.negamax(b, board.Move{}, nil, depth-(nullMoveReduction+1), dist+(nullMoveReduction+1), -beta, -(beta - 1))
 		unApply()
 
@@ -282,7 +282,7 @@ func (e *Engine) negamax(
 			continue
 		}
 		moveCount++
-		e.boardHistory[b.Ply()] = b.Hash()
+		e.boardHistory[dist] = b.Hash()
 		var score int32
 		if moveCount == 1 {
 			score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
@@ -357,7 +357,7 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 	}
 
 	eval := e.Evaluate(b)
-	if b.Ply() >= MaxDepth {
+	if b.Ply() >= uint16(MaxDepth) {
 		return eval
 	}
 	isCheck := b.IsKingChecked(b.Turn())
@@ -409,9 +409,9 @@ func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int3
 	return bestScore
 }
 
-func (e *Engine) isBoardRepeated(b *board.Board) bool {
+func (e *Engine) isBoardRepeated(b *board.Board, dist uint8) bool {
 	count := 0
-	for ply := uint8(1); ply < b.Ply(); ply++ {
+	for ply := uint8(0); ply < dist; ply++ {
 		if e.boardHistory[ply] == b.Hash() {
 			if count++; count >= 2 {
 				return true // TODO: try strict repetition check on first match?

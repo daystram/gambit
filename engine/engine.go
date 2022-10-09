@@ -227,7 +227,7 @@ func (e *Engine) negamax(
 
 	// check from TranspositionTable
 	ttType, ttMove, ttScore, ttDepth, ok := e.tt.Get(b, e.currentPly)
-	if !isRoot && !ok && ttDepth >= depth {
+	if !isRoot && ok && ttDepth >= depth {
 		switch ttType {
 		case EntryTypeExact:
 			return ttScore

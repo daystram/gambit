@@ -123,12 +123,11 @@ type Engine struct {
 	boardHistory [1024]uint64
 	clock        *Clock
 
-	currentPly       uint8
-	currentTurn      board.Side
-	nodes            uint32
-	totalNodes       uint32
-	totalElapsedTime time.Duration
-	logger           func(...any)
+	currentPly  uint8
+	currentTurn board.Side
+	nodes       uint32
+	elapsedTime time.Duration
+	logger      func(...any)
 }
 
 func NewEngine(cfg *EngineConfig) *Engine {
@@ -162,17 +161,15 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 	var pvl PVLine
 	e.currentPly = b.Ply()
 	e.currentTurn = b.Turn()
-	e.totalNodes = 0
-	e.totalElapsedTime = 0
+	e.nodes = 0
+	e.elapsedTime = 0
 
 	e.clock.Start(ctx, b.Turn(), b.FullMoveClock(), &cfg.ClockConfig)
 
 	for d := uint8(1); !e.clock.DoneByDepth(d); d++ {
-		e.nodes = 0
-
 		startTime := time.Now()
 		candidateScore := e.negamax(b, board.Move{}, &pvl, d, 0, -ScoreInfinite, ScoreInfinite)
-		elapsedTime := time.Since(startTime)
+		e.elapsedTime += time.Since(startTime)
 
 		if e.clock.DoneByMovetime() {
 			break
@@ -184,16 +181,14 @@ func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 		if cfg.Debug {
 			e.logger(message.NewPrinter(language.English).
 				Sprintf("depth:%d [%s] nodes:%d (%.0fn/s) t:%s\n    %s",
-					d, formatScoreDebug(bestScore, pvl), e.nodes, float64(e.nodes)/((elapsedTime + 1).Seconds()), elapsedTime, pvl.String(b)))
+					d, formatScoreDebug(bestScore, pvl), e.nodes, float64(e.nodes)/((e.elapsedTime + 1).Seconds()), e.elapsedTime, pvl.String(b)))
 		} else {
 			e.logger(fmt.Sprintf("info depth %d score %s time %d nodes %d nps %.0f pv %s",
-				d, formatScoreUCI(bestScore, pvl), elapsedTime.Milliseconds(), e.nodes, float64(e.nodes)/((elapsedTime + 1).Seconds()), pvl.StringUCI()))
+				d, formatScoreUCI(bestScore, pvl), e.elapsedTime.Milliseconds(), e.nodes, float64(e.nodes)/((e.elapsedTime + 1).Seconds()), pvl.StringUCI()))
 		}
 
-		e.totalNodes += e.nodes
-		e.totalElapsedTime += elapsedTime
 		if bestScore == scoreCheckmate || bestScore == -scoreCheckmate ||
-			(e.clock.Mode() == ClockModeGametime && e.totalElapsedTime.Seconds() > e.clock.AllocatedMovetime().Seconds()*movetimeEndEarlyThreshold) {
+			(e.clock.Mode() == ClockModeGametime && e.elapsedTime.Seconds() > e.clock.AllocatedMovetime().Seconds()*movetimeEndEarlyThreshold) {
 			break
 		}
 		pvl.Clear()

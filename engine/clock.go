@@ -78,7 +78,7 @@ func (c *Clock) Start(ctx context.Context, turn board.Side, fullMoveClock uint8,
 			// game clock constraint
 			// TODO: improve heuristics
 			c.mode = ClockModeGametime
-			phase := max(int64(expectedGameMoves-fullMoveClock), 1)
+			phase := max(int64(expectedGameMoves)-int64(fullMoveClock), 1)
 			if turn == board.SideWhite {
 				c.allocatedMovetime = time.Duration(float64(cfg.WhiteTime)/float64(phase)) + time.Duration(float64(cfg.WhiteIncrement)*(1-movetimeAccumulationRatio))
 			} else {

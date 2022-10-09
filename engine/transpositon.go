@@ -22,7 +22,7 @@ const (
 
 type TranspositionTable struct {
 	table    []entry
-	mask     uint64
+	count    uint64
 	disabled bool
 }
 
@@ -38,22 +38,19 @@ type entry struct {
 func NewTranspositionTable(sizeMB uint32) *TranspositionTable {
 	fmt.Print("Initializing transposition table... ")
 	entrySize := uint32(unsafe.Sizeof(entry{}))
-	allocCount := uint32(1)
-	for count := sizeMB * 1e6 / entrySize; allocCount < count; {
-		allocCount <<= 1
-	}
+	count := sizeMB * 1e6 / entrySize
 	tt := TranspositionTable{
-		table:    make([]entry, allocCount),
-		mask:     uint64(allocCount - 1),
+		table:    make([]entry, count+1),
+		count:    uint64(count),
 		disabled: sizeMB == 0,
 	}
-	fmt.Printf("Done (%.3fMB)\n", float64(allocCount*entrySize)/1e6)
+	fmt.Printf("Done (%.3fMB)\n", float64(count*entrySize)/1e6)
 	return &tt
 }
 
 func (t *TranspositionTable) Set(b *board.Board, age uint16, typ EntryType, mv board.Move, score int32, depth uint8) {
 	hash := b.Hash()
-	index := hash & t.mask
+	index := hash % t.count
 	e := t.table[index]
 	if !t.disabled && (e.typ == EntryTypeUnknown || e.age != age || e.depth <= depth) {
 		t.table[index] = entry{
@@ -70,7 +67,7 @@ func (t *TranspositionTable) Set(b *board.Board, age uint16, typ EntryType, mv b
 
 func (t *TranspositionTable) Get(b *board.Board, age uint16) (EntryType, board.Move, int32, uint8, bool) {
 	hash := b.Hash()
-	index := hash & t.mask
+	index := hash % t.count
 	e := t.table[index]
 	if t.disabled || e.typ == EntryTypeUnknown || e.age != age || e.hash != hash {
 		return EntryTypeUnknown, board.Move{}, 0, 0, false

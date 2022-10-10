@@ -54,48 +54,20 @@ func WithFEN(fen string) BoardOption {
 	}
 }
 
-func NewBoard(opts ...BoardOption) (*Board, Side, error) {
+func NewBoard(opts ...BoardOption) (*Board, error) {
 	cfg := &boardConfig{
 		fen: DefaultStartingPositionFEN,
 	}
 	for _, f := range opts {
 		f(cfg)
 	}
-	sides,
-		pieces,
-		cells,
-		materialValue,
-		positionValueMG,
-		positionValueEG,
-		castleRights,
-		enPassant,
-		halfMoveClock,
-		fullMoveClock,
-		turn,
-		hash,
-		err := parseFEN(cfg.fen)
-	if err != nil {
-		return nil, SideUnknown, err
-	}
 
-	return &Board{
-		occupied:        Union(sides[SideBlack], sides[SideWhite]),
-		sides:           sides,
-		pieces:          pieces,
-		cells:           cells,
-		materialValue:   materialValue,
-		positionValueMG: positionValueMG,
-		positionValueEG: positionValueEG,
-		phase:           PhaseTotal, // TODO: need to calc phase on non-startpos starting states?
-		enPassant:       enPassant,
-		castleRights:    castleRights,
-		halfMoveClock:   halfMoveClock,
-		fullMoveClock:   fullMoveClock,
-		ply:             0,
-		state:           StateUnknown,
-		turn:            turn,
-		hash:            hash,
-	}, turn, nil
+	b := Board{}
+	err := UnmarshalFEN(cfg.fen, &b)
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
 }
 
 func (b *Board) IsLegal(mv Move) bool {
@@ -821,6 +793,11 @@ func (b *Board) GetSideAndPieces(pos position.Pos) (Side, Piece) {
 
 func (b *Board) setSideAndPieces(pos position.Pos, s Side, p Piece) {
 	b.cells[pos] = uint8(s)<<4 + uint8(p)
+}
+
+func (b *Board) FEN() string {
+	fen, _ := MarshalFEN(b)
+	return fen
 }
 
 func (b *Board) Dump() string {

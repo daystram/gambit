@@ -16,7 +16,7 @@ func step(fen string) error {
 		timesApply         []time.Duration
 		timesState         []time.Duration
 	)
-	b, _, _ := board.NewBoard(board.WithFEN(fen))
+	b, _ := board.NewBoard(board.WithFEN(fen))
 	rand.Seed(1)
 stepLoop:
 	for step := 0; step < 5000; step++ {

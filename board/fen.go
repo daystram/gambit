@@ -9,29 +9,25 @@ import (
 	"github.com/daystram/gambit/position"
 )
 
-func parseFEN(fen string) (sideBitmaps, pieceBitmaps, cellList, sideValue, sideValue, sideValue, CastleRights, bitmap, uint8, uint8, Side, uint64, error) {
+func UnmarshalFEN(fen string, b *Board) error {
+	if b == nil {
+		return fmt.Errorf("invalid board")
+	}
 	segments := strings.Split(fen, " ")
 	if len(segments) != 6 {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: incorrect number of segments", ErrInvalidFEN)
+		return fmt.Errorf("%w: incorrect number of segments", ErrInvalidFEN)
 	}
 
-	var sides sideBitmaps
-	var pieces pieceBitmaps
-	var cells cellList
-	var materialValue sideValue
-	var positionValueMG sideValue
-	var positionValueEG sideValue
-	var hash uint64
 	rows := strings.Split(segments[0], "/")
 	if len(rows) != int(Height) {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: invalid board configuration", ErrInvalidFEN)
+		return fmt.Errorf("%w: invalid board configuration", ErrInvalidFEN)
 	}
 	for y := position.Pos(0); y < Height; y++ {
 		ptrX, ptrY := -1, Height-y-1
 		for x := position.Pos(0); x < Width; x++ {
 			ptrX++
 			if ptrX >= len(rows[ptrY]) {
-				return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: missing cells", ErrInvalidFEN)
+				return fmt.Errorf("%w: missing cells", ErrInvalidFEN)
 			}
 			var s Side
 			var p Piece
@@ -67,83 +63,86 @@ func parseFEN(fen string) (sideBitmaps, pieceBitmaps, cellList, sideValue, sideV
 						x += skip - 1
 						continue
 					}
-					return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: skip out of bounds", ErrInvalidFEN)
+					return fmt.Errorf("%w: skip out of bounds", ErrInvalidFEN)
 				}
-				return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: unknown symbol '%s'", ErrInvalidFEN, string(cell))
+				return fmt.Errorf("%w: unknown symbol '%s'", ErrInvalidFEN, string(cell))
 			}
 			pos := y*Width + x
-			sides[s] = Set(sides[s], pos, true)
-			pieces[p] = Set(pieces[p], pos, true)
-			cells[pos] = uint8(s)<<4 + uint8(p)
-			materialValue[s] += scoreMaterial[p]
-			positionValueMG[s] += scorePositionMG[p][scorePositionMap[s][pos]]
-			positionValueEG[s] += scorePositionEG[p][scorePositionMap[s][pos]]
-			hash ^= zobristConstantPiece[s][p][pos]
+			b.occupied.Set(pos)
+			b.sides[s].Set(pos)
+			b.pieces[p].Set(pos)
+			b.cells[pos] = uint8(s)<<4 + uint8(p)
+			b.materialValue[s] += scoreMaterial[p]
+			b.positionValueMG[s] += scorePositionMG[p][scorePositionMap[s][pos]]
+			b.positionValueEG[s] += scorePositionEG[p][scorePositionMap[s][pos]]
+			b.hash ^= zobristConstantPiece[s][p][pos]
 		}
 	}
-
-	var turn Side
-	switch segments[1] {
-	case "w":
-		turn = SideWhite
-		hash ^= zobristConstantSideWhite
-	case "b":
-		turn = SideBlack
-	default:
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: invalid turn", ErrInvalidFEN)
+	if b.GetBitmap(SideWhite, PieceKing) == 0 || b.GetBitmap(SideBlack, PieceKing) == 0 {
+		return fmt.Errorf("%w: king missing", ErrInvalidFEN)
 	}
 
-	var castleRights CastleRights
+	switch segments[1] {
+	case "w":
+		b.turn = SideWhite
+		b.hash ^= zobristConstantSideWhite
+	case "b":
+		b.turn = SideBlack
+	default:
+		return fmt.Errorf("%w: invalid turn", ErrInvalidFEN)
+	}
+
 	if len(segments[2]) > 4 {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
+		return fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
 	}
 crLoop:
 	for i, e := range segments[2] {
 		switch e {
 		case 'K':
-			castleRights.Set(CastleDirectionWhiteRight, true)
+			b.castleRights.Set(CastleDirectionWhiteRight, true)
 		case 'k':
-			castleRights.Set(CastleDirectionBlackRight, true)
+			b.castleRights.Set(CastleDirectionBlackRight, true)
 		case 'Q':
-			castleRights.Set(CastleDirectionWhiteLeft, true)
+			b.castleRights.Set(CastleDirectionWhiteLeft, true)
 		case 'q':
-			castleRights.Set(CastleDirectionBlackLeft, true)
+			b.castleRights.Set(CastleDirectionBlackLeft, true)
 		default:
 			if i == 0 && e == '-' {
 				break crLoop
 			}
-			return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
+			return fmt.Errorf("%w: invalid castling rights", ErrInvalidFEN)
 		}
 	}
-	hash ^= zobristConstantCastleRights[castleRights]
+	b.hash ^= zobristConstantCastleRights[b.castleRights]
 
-	var enPassant bitmap
 	if segments[3] != "-" {
 		pos, err := position.NewPosFromNotation(segments[3])
 		if err != nil {
-			return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
+			return fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
 		}
-		enPassant = maskCell[pos]
-		if enPassant&(maskRow[2]|maskRow[5]) == 0 {
-			return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
+		b.enPassant = maskCell[pos]
+		if b.enPassant&(maskRow[2]|maskRow[5]) == 0 {
+			return fmt.Errorf("%w: %v", fmt.Errorf("%w: invalid enpassant position", ErrInvalidFEN), err)
 		}
 	}
-	hash ^= zobristConstantEnPassant[enPassant.LS1B()]
+	b.hash ^= zobristConstantEnPassant[b.enPassant.LS1B()]
 
 	halfMoveClock, err := strconv.ParseUint(segments[4], 10, 8)
 	if err != nil {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: invalid half move clock", ErrInvalidFEN)
+		return fmt.Errorf("%w: invalid half move clock", ErrInvalidFEN)
 	}
+	b.halfMoveClock = uint8(halfMoveClock)
 
 	fullMoveClock, err := strconv.ParseUint(segments[5], 10, 8)
 	if err != nil {
-		return sideBitmaps{}, pieceBitmaps{}, cellList{}, sideValue{}, sideValue{}, sideValue{}, CastleRights(0), bitmap(0), 0, 0, SideUnknown, 0, fmt.Errorf("%w: invalid full move clock", ErrInvalidFEN)
+		return fmt.Errorf("%w: invalid full move clock", ErrInvalidFEN)
 	}
+	b.fullMoveClock = uint8(fullMoveClock)
 
-	return sides, pieces, cells, materialValue, positionValueMG, positionValueEG, castleRights, enPassant, uint8(halfMoveClock), uint8(fullMoveClock), turn, hash, nil
+	return nil
 }
 
-func (b *Board) FEN() string {
+func MarshalFEN(b *Board) (string, error) {
 	builder := strings.Builder{}
 	var skip uint8
 	for y := position.Pos(Height) - 1; y >= 0; y-- {
@@ -204,5 +203,5 @@ func (b *Board) FEN() string {
 
 	_, _ = builder.WriteString(fmt.Sprintf(" %d %d", b.halfMoveClock, b.fullMoveClock))
 
-	return builder.String()
+	return builder.String(), nil
 }

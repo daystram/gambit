@@ -148,7 +148,7 @@ func (i *Interface) commandPosition(_ context.Context, args []string) {
 		return
 	}
 
-	b, _, err := board.NewBoard(board.WithFEN(fen))
+	b, err := board.NewBoard(board.WithFEN(fen))
 	if err != nil {
 		return
 	}

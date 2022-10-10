@@ -14,7 +14,7 @@ import (
 
 func Perft(depth int, fen string, parallel, verbose bool, out chan string) error {
 	var nodes, cap, enp, cas, pro, chk uint64
-	b, _, err := board.NewBoard(
+	b, err := board.NewBoard(
 		board.WithFEN(fen),
 	)
 	if err != nil {

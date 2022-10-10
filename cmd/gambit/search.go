@@ -13,7 +13,7 @@ import (
 
 func search(steps, maxDepth, timeout int) error {
 	rand.Seed(time.Now().Unix())
-	b, _, _ := board.NewBoard()
+	b, _ := board.NewBoard()
 	e := engine.NewEngine(&engine.EngineConfig{})
 	fmt.Println(b.Draw())
 	fmt.Println(b.FEN())

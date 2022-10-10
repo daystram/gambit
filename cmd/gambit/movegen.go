@@ -10,11 +10,11 @@ import (
 
 func movegen(fen string, draw bool) error {
 	log.Println("============ movegen")
-	b, t, err := board.NewBoard(board.WithFEN(fen))
+	b, err := board.NewBoard(board.WithFEN(fen))
 	if err != nil {
 		return err
 	}
-	fmt.Println("to move:", t)
+	fmt.Println("to move:", b.Turn())
 	fmt.Println(b.Dump())
 	fmt.Println(b.Draw())
 	fmt.Println(b.State())

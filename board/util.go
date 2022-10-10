@@ -88,11 +88,12 @@ func (m *Magic) GetIndex(occupancy bitmap) uint16 {
 	return uint16(((occupancy & m.Mask) * m.Magic) >> m.Shift)
 }
 
-func Set(b bitmap, pos position.Pos, value bool) bitmap {
-	if value {
-		return b | maskCell[pos]
-	}
-	return b &^ maskCell[pos]
+func (bm *bitmap) Set(pos position.Pos) {
+	*bm |= maskCell[pos]
+}
+
+func (bm *bitmap) Unset(pos position.Pos) {
+	*bm &^= maskCell[pos]
 }
 
 func (bm bitmap) LS1B() position.Pos {

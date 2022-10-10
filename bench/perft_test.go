@@ -130,7 +130,7 @@ func TestPerft(t *testing.T) {
 			tt := tt
 			t.Run(fmt.Sprintf("perft(%d): %s", tt.depth, fen), func(t *testing.T) {
 				// t.Parallel()
-				b, _, err := board.NewBoard(
+				b, err := board.NewBoard(
 					board.WithFEN(fen),
 				)
 				if err != nil {

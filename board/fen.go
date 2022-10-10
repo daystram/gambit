@@ -75,6 +75,7 @@ func UnmarshalFEN(fen string, b *Board) error {
 			b.materialValue[s] += scoreMaterial[p]
 			b.positionValueMG[s] += scorePositionMG[p][scorePositionMap[s][pos]]
 			b.positionValueEG[s] += scorePositionEG[p][scorePositionMap[s][pos]]
+			b.phase += phaseConstant[p]
 			b.hash ^= zobristConstantPiece[s][p][pos]
 		}
 	}

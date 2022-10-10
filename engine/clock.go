@@ -65,7 +65,7 @@ type ClockConfig struct {
 func (c *Clock) Start(ctx context.Context, turn board.Side, fullMoveClock uint8, cfg *ClockConfig) {
 	c.Stop()
 	c.allocatedMovetime = MaxMovetime
-	c.allocatedDepth = MaxDepth
+	c.allocatedDepth = MaxDepth - 1
 	c.allocatedNodes = MaxNodes
 	c.done = false
 
@@ -91,8 +91,8 @@ func (c *Clock) Start(ctx context.Context, turn board.Side, fullMoveClock uint8,
 	} else if cfg.Depth != 0 {
 		c.mode = ClockModeDepth
 		c.allocatedDepth = cfg.Depth
-		if c.allocatedDepth > MaxDepth {
-			c.allocatedDepth = MaxDepth
+		if c.allocatedDepth >= MaxDepth {
+			c.allocatedDepth = MaxDepth - 1
 		}
 	} else if cfg.Nodes != 0 {
 		c.mode = ClockModeNodes

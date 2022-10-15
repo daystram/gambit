@@ -60,29 +60,29 @@ func (e *Engine) sortMoves(mvs *[]board.Move, index int) {
 func (e *Engine) Evaluate(b *board.Board) int16 {
 	ourTurn := b.Turn()
 
-	// TODO: check game state here?
-
 	var (
-		material int16 // Material heuristic
-		position int16 // PST heuristic
-		tempo    int16 // Tempo bonus to reduce early game oscillation due to leaf parity
+		materialMG, materialEG int16 // Material heuristic
+		positionMG, positionEG int16 // PST heuristic
+		tempoMG, tempoEG       int16 // Tempo bonus to reduce early game oscillation due to leaf parity
 	)
 
-	materialWhite, materialBlack := b.GetMaterialValue()
+	materialWhiteMG, materialBlackMG := b.GetMaterialValue()
+	materialWhiteEG, materialBlackEG := materialWhiteMG, materialBlackMG // TODO: tapering material value
 	positionWhiteMG, positionBlackMG, positionWhiteEG, positionBlackEG := b.GetPositionValue()
-	phaseMG := int16(max(b.Phase(), 0))
-	phaseEG := int16(board.PhaseTotal) - phaseMG
 	if ourTurn == board.SideWhite {
-		material = materialWhite - materialBlack
-		position = ((positionWhiteMG-positionBlackMG)*phaseMG + (positionWhiteEG-positionBlackEG)*phaseEG) / int16(board.PhaseTotal)
+		materialMG, materialEG = materialWhiteMG-materialBlackMG, materialWhiteEG-materialBlackEG
+		positionMG, positionEG = positionWhiteMG-positionBlackMG, positionWhiteEG-positionBlackEG
 	} else {
-		material = materialBlack - materialWhite
-		position = ((positionBlackMG-positionWhiteMG)*phaseMG + (positionBlackEG-positionWhiteEG)*phaseEG) / int16(board.PhaseTotal)
+		materialMG, materialEG = materialBlackMG-materialWhiteMG, materialBlackEG-materialWhiteEG
+		positionMG, positionEG = positionBlackMG-positionWhiteMG, positionBlackEG-positionWhiteEG
 	}
 
 	if ourTurn == e.currentTurn {
-		tempo = scoreTempoBonus
+		tempoMG = scoreTempoBonus
 	}
 
-	return material + position + tempo
+	scoreMG, scoreEG := materialMG+positionMG+tempoMG, materialEG+positionEG+tempoEG
+	phaseMG := int16(max(b.Phase(), 0))
+	phaseEG := int16(board.PhaseTotal) - phaseMG
+	return (scoreMG*phaseMG + scoreEG*phaseEG) / int16(board.PhaseTotal)
 }

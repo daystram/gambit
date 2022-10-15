@@ -17,7 +17,7 @@ type bitmap uint64
 type sideBitmaps [3]bitmap
 type pieceBitmaps [7]bitmap
 type cellList [64]uint8
-type sideValue [3]int32
+type sideValue [3]int16
 
 // Little-endian rank-file (LERF) mapping
 type Board struct {
@@ -889,11 +889,11 @@ func (b *Board) State() State {
 	return StateRunning
 }
 
-func (b *Board) GetMaterialValue() (int32, int32) {
+func (b *Board) GetMaterialValue() (int16, int16) {
 	return b.materialValue[SideWhite], b.materialValue[SideBlack]
 }
 
-func (b *Board) GetPositionValue() (int32, int32, int32, int32) {
+func (b *Board) GetPositionValue() (int16, int16, int16, int16) {
 	return b.positionValueMG[SideWhite], b.positionValueMG[SideBlack],
 		b.positionValueEG[SideWhite], b.positionValueEG[SideBlack]
 }

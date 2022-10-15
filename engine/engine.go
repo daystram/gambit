@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	ScoreInfinite int32 = math.MaxInt32
+	ScoreInfinite int16 = math.MaxInt16
 
 	clockTimePVConsistencyDecay       = 0.95 // more reduction with decay towards 0
 	clockTimeScoreConsistencyMaxDecay = 0.95
@@ -159,7 +159,7 @@ func (e *Engine) Search(ctx context.Context, b *board.Board, cfg *SearchConfig) 
 func (e *Engine) search(ctx context.Context, b *board.Board, cfg *SearchConfig) (board.Move, error) {
 	var err error
 	var bestMove, prevMove board.Move
-	var bestScore, prevScore int32
+	var bestScore, prevScore int16
 	var pvl PVLine
 	e.currentPly = b.Ply()
 	e.currentTurn = b.Turn()
@@ -224,8 +224,8 @@ func (e *Engine) negamax(
 	prevMove board.Move,
 	pvl *PVLine,
 	depth, dist uint8,
-	alpha, beta int32,
-) int32 {
+	alpha, beta int16,
+) int16 {
 	e.nodes++
 
 	// check if movetime exceeded
@@ -302,7 +302,7 @@ func (e *Engine) negamax(
 		}
 		moveCount++
 		e.boardHistory[dist] = b.Hash()
-		var score int32
+		var score int16
 		if moveCount == 1 {
 			score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)
 		} else {
@@ -368,7 +368,7 @@ func (e *Engine) negamax(
 	return bestScore
 }
 
-func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int32) int32 {
+func (e *Engine) quiescence(b *board.Board, pvl *PVLine, alpha, beta int16) int16 {
 	e.nodes++
 
 	if e.clock.DoneByMovetime() {
@@ -461,7 +461,7 @@ func abs[T constraints.Signed](x T) T {
 	return x
 }
 
-func formatScoreDebug(s int32, pvl PVLine) string {
+func formatScoreDebug(s int16, pvl PVLine) string {
 	if s == ScoreInfinite {
 		return "+inf"
 	}
@@ -483,7 +483,7 @@ func formatScoreDebug(s int32, pvl PVLine) string {
 	return "0"
 }
 
-func formatScoreUCI(s int32, pvl PVLine) string {
+func formatScoreUCI(s int16, pvl PVLine) string {
 	if s == scoreCheckmate {
 		return fmt.Sprintf("mate %d", pvl.Len()/2+1)
 	}

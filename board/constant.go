@@ -80,7 +80,7 @@ var (
 	magicBishop [TotalCells]Magic
 	magicRook   [TotalCells]Magic
 
-	scoreMaterial = [6 + 1]int32{
+	scoreMaterial = [6 + 1]int16{
 		PiecePawn:   100,
 		PieceKnight: 320,
 		PieceBishop: 350,
@@ -103,7 +103,7 @@ var (
 
 	// PST midgame table taken from http://www.talkchess.com/forum3/viewtopic.php?f=2&t=68311&start=19
 	// TODO: create tuner
-	scorePositionMG = [6 + 1][TotalCells]int32{
+	scorePositionMG = [6 + 1][TotalCells]int16{
 		PiecePawn: {
 			0, 0, 0, 0, 0, 0, 0, 0,
 			98, 134, 61, 95, 68, 126, 34, -11,
@@ -167,7 +167,7 @@ var (
 	}
 
 	// PST endgame table taken from http://www.talkchess.com/forum3/viewtopic.php?f=2&t=68311&start=19
-	scorePositionEG = [6 + 1][TotalCells]int32{
+	scorePositionEG = [6 + 1][TotalCells]int16{
 		PiecePawn: {
 			0, 0, 0, 0, 0, 0, 0, 0,
 			178, 173, 158, 134, 147, 132, 165, 187,

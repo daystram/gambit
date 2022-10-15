@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	scoreTempoBonus int32 = 20
+	scoreTempoBonus int16 = 20
 
 	offsetPV     uint8 = 255
 	offsetMVVLVA uint8 = offsetPV - 64
@@ -57,27 +57,27 @@ func (e *Engine) sortMoves(mvs *[]board.Move, index int) {
 
 // Evaluate returns the score evaluated from the given board.
 // The score is positive relative to the currently playing side.
-func (e *Engine) Evaluate(b *board.Board) int32 {
+func (e *Engine) Evaluate(b *board.Board) int16 {
 	ourTurn := b.Turn()
 
 	// TODO: check game state here?
 
 	var (
-		material int32 // Material heuristic
-		position int32 // PST heuristic
-		tempo    int32 // Tempo bonus to reduce early game oscillation due to leaf parity
+		material int16 // Material heuristic
+		position int16 // PST heuristic
+		tempo    int16 // Tempo bonus to reduce early game oscillation due to leaf parity
 	)
 
 	materialWhite, materialBlack := b.GetMaterialValue()
 	positionWhiteMG, positionBlackMG, positionWhiteEG, positionBlackEG := b.GetPositionValue()
-	phaseMG := int32(max(b.Phase(), 0))
-	phaseEG := int32(board.PhaseTotal) - phaseMG
+	phaseMG := int16(max(b.Phase(), 0))
+	phaseEG := int16(board.PhaseTotal) - phaseMG
 	if ourTurn == board.SideWhite {
 		material = materialWhite - materialBlack
-		position = ((positionWhiteMG-positionBlackMG)*phaseMG + (positionWhiteEG-positionBlackEG)*phaseEG) / int32(board.PhaseTotal)
+		position = ((positionWhiteMG-positionBlackMG)*phaseMG + (positionWhiteEG-positionBlackEG)*phaseEG) / int16(board.PhaseTotal)
 	} else {
 		material = materialBlack - materialWhite
-		position = ((positionBlackMG-positionWhiteMG)*phaseMG + (positionBlackEG-positionWhiteEG)*phaseEG) / int32(board.PhaseTotal)
+		position = ((positionBlackMG-positionWhiteMG)*phaseMG + (positionBlackEG-positionWhiteEG)*phaseEG) / int16(board.PhaseTotal)
 	}
 
 	if ourTurn == e.currentTurn {

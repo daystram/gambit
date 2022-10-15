@@ -29,7 +29,7 @@ type Board struct {
 	materialValue   sideValue
 	positionValueMG sideValue
 	positionValueEG sideValue
-	phase           uint8
+	phase           int8
 
 	// meta
 	enPassant     bitmap
@@ -898,7 +898,7 @@ func (b *Board) GetPositionValue() (int16, int16, int16, int16) {
 		b.positionValueEG[SideWhite], b.positionValueEG[SideBlack]
 }
 
-func (b *Board) Phase() uint8 {
+func (b *Board) Phase() int8 {
 	return b.phase
 }
 

@@ -88,7 +88,7 @@ var (
 		PieceQueen:  900,
 	}
 
-	phaseConstant = [6 + 1]uint8{
+	phaseConstant = [6 + 1]int8{
 		PiecePawn:   0,
 		PieceKnight: 1,
 		PieceBishop: 1,

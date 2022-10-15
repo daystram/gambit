@@ -313,7 +313,7 @@ func (e *Engine) negamax(
 				if moveCount > 6 {
 					reduction = depth / 3
 				}
-				score = -e.negamax(b, mv, &childPVL, depth-(reduction+1), dist+(reduction+1), -(alpha + 1), -alpha)
+				score = -e.negamax(b, mv, &childPVL, depth-(reduction+1), dist+1, -(alpha + 1), -alpha)
 				if score > alpha {
 					// re-search at full depth
 					score = -e.negamax(b, mv, &childPVL, depth-1, dist+1, -beta, -alpha)

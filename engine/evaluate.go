@@ -5,6 +5,7 @@ import (
 )
 
 var (
+	scoreBishopPair int16 = 50
 	scoreTempoBonus int16 = 20
 
 	offsetPV     uint8 = 255
@@ -59,11 +60,13 @@ func (e *Engine) sortMoves(mvs *[]board.Move, index int) {
 // The score is positive relative to the currently playing side.
 func (e *Engine) Evaluate(b *board.Board) int16 {
 	ourTurn := b.Turn()
+	theirTurn := ourTurn.Opposite()
 
 	var (
-		materialMG, materialEG int16 // Material heuristic
-		positionMG, positionEG int16 // PST heuristic
-		tempoMG, tempoEG       int16 // Tempo bonus to reduce early game oscillation due to leaf parity
+		materialMG, materialEG     int16 // Material heuristic
+		positionMG, positionEG     int16 // PST heuristic
+		bishopPairMG, bishopPairEG int16 // Bishop pair
+		tempoMG, tempoEG           int16 // Tempo bonus to reduce early game oscillation due to leaf parity
 	)
 
 	materialWhiteMG, materialBlackMG := b.GetMaterialValue()
@@ -77,11 +80,20 @@ func (e *Engine) Evaluate(b *board.Board) int16 {
 		positionMG, positionEG = positionBlackMG-positionWhiteMG, positionBlackEG-positionWhiteEG
 	}
 
+	if b.GetBitmap(ourTurn, board.PieceBishop).BitCount() >= 2 { // TODO: score for different color pair only?
+		bishopPairMG += scoreBishopPair
+		bishopPairEG += scoreBishopPair
+	}
+	if b.GetBitmap(theirTurn, board.PieceBishop).BitCount() >= 2 {
+		bishopPairMG -= scoreBishopPair
+		bishopPairEG -= scoreBishopPair
+	}
+
 	if ourTurn == e.currentTurn {
 		tempoMG = scoreTempoBonus
 	}
 
-	scoreMG, scoreEG := materialMG+positionMG+tempoMG, materialEG+positionEG+tempoEG
+	scoreMG, scoreEG := materialMG+positionMG+bishopPairMG+tempoMG, materialEG+positionEG+bishopPairEG+tempoEG
 	phaseMG := int16(max(b.Phase(), 0))
 	phaseEG := int16(board.PhaseTotal) - phaseMG
 	return (scoreMG*phaseMG + scoreEG*phaseEG) / int16(board.PhaseTotal)

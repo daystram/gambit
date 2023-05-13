@@ -63,38 +63,36 @@ func (e *Engine) Evaluate(b *board.Board) int16 {
 	theirTurn := ourTurn.Opposite()
 
 	var (
-		materialMG, materialEG     int16 // Material heuristic
-		positionMG, positionEG     int16 // PST heuristic
-		bishopPairMG, bishopPairEG int16 // Bishop pair
-		tempoMG, tempoEG           int16 // Tempo bonus to reduce early game oscillation due to leaf parity
+		material               int16 // Material heuristic
+		positionMG, positionEG int16 // PST heuristic
+		bishopPair             int16 // Bishop pair
+		tempoMG, tempoEG       int16 // Tempo bonus to reduce early game oscillation due to leaf parity
 	)
 
-	materialWhiteMG, materialBlackMG := b.GetMaterialValue()
-	materialWhiteEG, materialBlackEG := materialWhiteMG, materialBlackMG // TODO: tapering material value
+	materialWhite, materialBlack := b.GetMaterialValue()
 	positionWhiteMG, positionBlackMG, positionWhiteEG, positionBlackEG := b.GetPositionValue()
 	if ourTurn == board.SideWhite {
-		materialMG, materialEG = materialWhiteMG-materialBlackMG, materialWhiteEG-materialBlackEG
+		material = materialWhite - materialBlack
 		positionMG, positionEG = positionWhiteMG-positionBlackMG, positionWhiteEG-positionBlackEG
 	} else {
-		materialMG, materialEG = materialBlackMG-materialWhiteMG, materialBlackEG-materialWhiteEG
+		material = materialBlack - materialWhite
 		positionMG, positionEG = positionBlackMG-positionWhiteMG, positionBlackEG-positionWhiteEG
 	}
 
 	if b.GetBitmap(ourTurn, board.PieceBishop).BitCount() >= 2 { // TODO: score for different color pair only?
-		bishopPairMG += scoreBishopPair
-		bishopPairEG += scoreBishopPair
+		bishopPair += scoreBishopPair
 	}
 	if b.GetBitmap(theirTurn, board.PieceBishop).BitCount() >= 2 {
-		bishopPairMG -= scoreBishopPair
-		bishopPairEG -= scoreBishopPair
+		bishopPair -= scoreBishopPair
 	}
 
 	if ourTurn == e.currentTurn {
 		tempoMG = scoreTempoBonus
+		tempoEG = scoreTempoBonus // TODO: tapered tempo score
 	}
 
-	scoreMG, scoreEG := materialMG+positionMG+bishopPairMG+tempoMG, materialEG+positionEG+bishopPairEG+tempoEG
+	scoreMG, scoreEG := positionMG+tempoMG, positionEG+tempoEG
 	phaseMG := int16(max(b.Phase(), 0))
 	phaseEG := int16(board.PhaseTotal) - phaseMG
-	return (scoreMG*phaseMG + scoreEG*phaseEG) / int16(board.PhaseTotal)
+	return ((scoreMG*phaseMG + scoreEG*phaseEG) / int16(board.PhaseTotal)) + material + bishopPair
 }

@@ -11,10 +11,12 @@ import (
 	"github.com/daystram/gambit/engine"
 )
 
-func search(steps, maxDepth, timeout int) error {
+func search(fen string, steps, maxDepth, timeout int) error {
 	rand.Seed(time.Now().Unix())
-	b, _ := board.NewBoard()
-	e := engine.NewEngine(&engine.EngineConfig{})
+	b, _ := board.NewBoard(board.WithFEN(fen))
+	e := engine.NewEngine(&engine.EngineConfig{
+		HashTableSize: engine.DefaultHashTableSizeMB,
+	})
 	fmt.Println(b.Draw())
 	fmt.Println(b.FEN())
 	fmt.Println(b.DebugString())

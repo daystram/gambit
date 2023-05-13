@@ -59,7 +59,7 @@ func realMain(args []string) error {
 		return step(fen)
 	}
 	if *searchRun {
-		return search(50, *searchDepth, *searchMovetime)
+		return search(fen, 50, *searchDepth, *searchMovetime)
 	}
 
 	return runUCI()

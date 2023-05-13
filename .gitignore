@@ -1,4 +1,5 @@
-/gambit
-/gambit.exe
+gambit
+gambit.exe
+/build
 *.out
 /games

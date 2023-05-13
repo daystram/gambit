@@ -49,6 +49,9 @@ func NewTranspositionTable(sizeMB uint32) *TranspositionTable {
 }
 
 func (t *TranspositionTable) Set(b *board.Board, age uint16, typ EntryType, mv board.Move, score int16, depth uint8) {
+	if t.IsDisabled() {
+		return
+	}
 	hash := b.Hash()
 	index := hash % t.count
 	e := t.table[index]
@@ -66,6 +69,9 @@ func (t *TranspositionTable) Set(b *board.Board, age uint16, typ EntryType, mv b
 }
 
 func (t *TranspositionTable) Get(b *board.Board, age uint16) (EntryType, board.Move, int16, uint8, bool) {
+	if t.IsDisabled() {
+		return 0, board.Move{}, 0, 0, false
+	}
 	hash := b.Hash()
 	index := hash % t.count
 	e := t.table[index]
@@ -73,4 +79,8 @@ func (t *TranspositionTable) Get(b *board.Board, age uint16) (EntryType, board.M
 		return EntryTypeUnknown, board.Move{}, 0, 0, false
 	}
 	return e.typ, e.mv, e.score, e.depth, true
+}
+
+func (t *TranspositionTable) IsDisabled() bool {
+	return t.count == 0
 }
